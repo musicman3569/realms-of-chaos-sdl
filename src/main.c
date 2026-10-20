@@ -1,13 +1,14 @@
 /* Realms of Chaos port: level viewer (first milestone).
  *
- * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--screenshot out.png]
+ * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--no-objects] [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and the level table from the EXE itself), then shows a level
- * in a 320x200 view: arrow keys scroll (Shift: faster), PgUp / PgDn change level, F12 saves
- * shotNNN.png, Esc quits. With --screenshot it renders one view to a PNG without a window. */
+ * in a 320x200 view with its objects in their starting frames: arrow keys scroll (Shift:
+ * faster), PgUp / PgDn change level, O toggles the objects, F12 saves shotNNN.png, Esc quits. With --screenshot it renders one view to a PNG without a window. */
 #include "archive.h"
 #include "gfx.h"
 #include "level.h"
+#include "object.h"
 #include "png.h"
 
 #include <SDL.h>
@@ -23,6 +24,7 @@ typedef struct {
     int level;
     int x, y;
     const char *screenshot;
+    bool no_objects;
 } options_t;
 
 static bool parse_args(int argc, char **argv, options_t *o)
@@ -34,6 +36,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->level = atoi(argv[++i]);
         else if (!strcmp(a, "--pos") && i + 1 < argc)
             sscanf(argv[++i], "%d,%d", &o->x, &o->y);
+        else if (!strcmp(a, "--no-objects"))
+            o->no_objects = true;
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
             o->screenshot = argv[++i];
         else if (a[0] != '-' && !o->exe)
@@ -90,7 +94,8 @@ int main(int argc, char **argv)
 {
     options_t opt;
     if (!parse_args(argc, argv, &opt)) {
-        fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--screenshot out.png]\n");
+        fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--no-objects] "
+                        "[--screenshot out.png]\n");
         return 2;
     }
 
@@ -105,7 +110,9 @@ int main(int argc, char **argv)
     }
 
     level_t lv;
-    if (!level_load(&lv, &arc, &list, opt.level, err, sizeof err)) {
+    objects_t objs;
+    if (!level_load(&lv, &arc, &list, opt.level, err, sizeof err) ||
+        !objects_load(&objs, &lv, &arc, err, sizeof err)) {
         fprintf(stderr, "roc: %s\n", err);
         return 1;
     }
@@ -119,11 +126,15 @@ int main(int argc, char **argv)
 
     if (opt.screenshot) {
         level_draw(&lv, &view, cam_x, cam_y);
+        if (!opt.no_objects)
+            objects_draw(&objs, &view, cam_x, cam_y);
         const int rc = save_png(opt.screenshot, &view, lv.palette);
         if (rc)
             fprintf(stderr, "roc: can't write %s\n", opt.screenshot);
-        printf("level %d %s: %dx%d tiles, %d objects, view at %d,%d\n", lv.number,
-               list.name[lv.number], lv.cols, lv.rows, lv.object_count, cam_x, cam_y);
+        printf("level %d %s: %dx%d tiles, %d objects (%d placed), view at %d,%d\n", lv.number,
+               list.name[lv.number], lv.cols, lv.rows, lv.object_count, objs.count, cam_x,
+               cam_y);
+        objects_free(&objs);
         level_free(&lv);
         surface_free(&view);
         arc_close(&arc);
@@ -149,7 +160,7 @@ int main(int argc, char **argv)
     uint32_t *argb = malloc(VIEW_W * VIEW_H * sizeof *argb);
 
     int shot = 0;
-    bool running = true;
+    bool running = true, show_objects = !opt.no_objects;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -164,6 +175,8 @@ int main(int argc, char **argv)
                     next = (lv.number + 1) % LEVEL_COUNT;
                 else if (k == SDLK_PAGEUP)
                     next = (lv.number + LEVEL_COUNT - 1) % LEVEL_COUNT;
+                else if (k == SDLK_o)
+                    show_objects = !show_objects;
                 else if (k == SDLK_F12) {
                     char name[32];
                     snprintf(name, sizeof name, "shot%03d.png", shot++);
@@ -172,9 +185,17 @@ int main(int argc, char **argv)
                 }
                 if (next >= 0) {
                     level_t nl;
-                    if (level_load(&nl, &arc, &list, next, err, sizeof err)) {
+                    objects_t no;
+                    bool ok = level_load(&nl, &arc, &list, next, err, sizeof err);
+                    if (ok && !objects_load(&no, &nl, &arc, err, sizeof err)) {
+                        level_free(&nl);
+                        ok = false;
+                    }
+                    if (ok) {
+                        objects_free(&objs);
                         level_free(&lv);
                         lv = nl;
+                        objs = no;
                         cam_x = cam_y = 0;
                     } else {
                         fprintf(stderr, "roc: %s\n", err);
@@ -190,6 +211,8 @@ int main(int argc, char **argv)
 
         surface_fill(&view, 0);
         level_draw(&lv, &view, cam_x, cam_y);
+        if (show_objects)
+            objects_draw(&objs, &view, cam_x, cam_y);
         to_argb(&view, lv.palette, argb);
         SDL_UpdateTexture(tex, NULL, argb, VIEW_W * sizeof *argb);
         SDL_RenderClear(ren);
@@ -207,6 +230,7 @@ int main(int argc, char **argv)
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
+    objects_free(&objs);
     level_free(&lv);
     surface_free(&view);
     arc_close(&arc);

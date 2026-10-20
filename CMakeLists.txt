@@ -11,6 +11,7 @@ add_executable(roc
     src/archive.c
     src/gfx.c
     src/level.c
+    src/object.c
     src/png.c
 )
 
