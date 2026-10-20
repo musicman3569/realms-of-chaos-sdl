@@ -51,7 +51,7 @@ static inline unsigned fire_power(void) { return Inv.flags >> 4 & 3; }
 
 /* Animator values: offsets of behaviour functions in segment 1000. */
 enum {
-    A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_BOMBEXPLODER = 0x08fc, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
+    A_DOKNIFEGUARD = 0x0291, A_DOGUARDKNIFE = 0x0699, A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_BOMBEXPLODER = 0x08fc, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
     A_ROSSPIECE = 0x0bb0, A_ROSSATTACK = 0x0bce, A_DODROP = 0x0c46, A_DOCATSKELETON = 0x0d95,
     A_DOCAVESPIKES = 0x0da4, A_DOCAVEFALLSPIKES = 0x0ea0, A_DOCAVESPIDER = 0x0fd9,
     A_DOGARGOYLE = 0x0fe8, A_DOGARGOYLEFIRE = 0x0ff7, A_DOCAVEHOLE = 0x1006,
@@ -116,6 +116,7 @@ struct obj {
     uint8_t surface_flags;
     /* port */
     obj_t *child;                /* SWAMPRAFT's front piece (a near pointer in GenericVar[0]) */
+    obj_t *parent;               /* a wisp's light: the wisp (a near pointer in GenericVar[0]) */
     bool dead;                   /* unlinked by OBJKILL, freed after the frame */
     obj_t *free_next;
 };

@@ -1497,6 +1497,40 @@ int do_blood(obj_t *o)
     return 0;
 }
 
+/* RXYOU.C:471 DOAMBIENTNOISE / RXYOUF.C:1589 FDOAMBIENTNOISE: the level's background sound
+ * (type 0x5c, OF_RATE, xSpeed 0x2000): when the last one has finished (and the sound card has
+ * more than 3 voices), play the level's again: birds in the forest, wind, water, the swamp...
+ * The sound is a stub, so for now this only picks the sample. */
+int do_ambient_noise(obj_t *o)
+{
+    /* (MAINTAINSOUND first, and nothing at all with _SoundVoices <= 3.) */
+    if (o->gv[0] != 0 && !sound_link_active(o->gv[0]))
+        o->gv[0] = 0;
+    if (o->gv[0] != 0)
+        return 0;
+    const uint8_t lv = G.level;
+    uint8_t sample = 0;
+    if (lv == 1 || lv == 2 || lv == 11 || lv == 12)
+        sample = 0x16;
+    else if (lv == 3)
+        sample = 0x0B;
+    else if (lv >= 4 && lv <= 7)
+        sample = 0x07;
+    else if (lv >= 8 && lv <= 10)
+        sample = 0x26;
+    else if (lv == 13 || lv == 14 || lv == 21)
+        sample = 0x30;
+    else if (lv >= 17 && lv <= 20)
+        sample = 0x13;
+    else if (lv >= 22 && lv <= 24)
+        sample = 0x10;
+    else if (lv == 25 || lv == 26)
+        sample = 0x09;
+    if (sample)
+        o->gv[0] = (int16_t)play_sample(sample, o);
+    return 0;
+}
+
 /* RXGENERL.C SCREENCENTER: the camera object (INITLEVEL spawns it). It scrolls a pixel at a
  * time until the player is between 0x4b and _CenterOff pixels from the top of the view (and,
  * on a vine, near the middle), then restores the normal dead zone. */

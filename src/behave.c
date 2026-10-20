@@ -13,7 +13,12 @@ typedef struct {
 
 /* Sorted by offset (checked on first use). */
 static const animator_t table[] = {
+    {A_DOKNIFEGUARD, do_knife_guard},
+    {A_DOGUARDKNIFE, do_guard_knife},
+    {A_DOBOMBGUARD, do_bomb_guard},
+    {A_DOBOMB, do_bomb},
     {A_BOMBEXPLODER, bomb_exploder},
+    {A_DOBACKSTARS, do_back_stars},
     {A_DODROP, do_drop},
     {A_DOCATSKELETON, do_cat_skeleton},
     {A_DOCAVESPIKES, do_cave_spikes},
@@ -23,6 +28,7 @@ static const animator_t table[] = {
     {A_DOGARGOYLEFIRE, do_gargoyle_fire},
     {A_DOCAVEHOLE, do_cave_hole},
     {A_DOTORCHPUFF, do_torch_puff},
+    {A_DOWISP, do_wisp},
     {A_DOBOAR, do_boar},
     {A_DOBOARATTACK, do_boar_attack},
     {A_DOBOARSPEAR, do_boar_spear},
@@ -53,6 +59,8 @@ static const animator_t table[] = {
     {A_GOBLINFIST, goblin_fist},
     {A_DOSPOREHOLE, do_spore_hole},
     {A_DOSPORE, do_spore},
+    {A_DOCHAIN, do_chain},
+    {A_DOCHAINEND, do_chain_end},
     {A_FROGPLAT, frog_plat},
     {A_FLOATINGPLATFORM, floating_platform},
     {A_DOCONTAINERBOMB, do_container_bomb},
@@ -104,6 +112,7 @@ static const animator_t table[] = {
     {A_DOHITPOINTS, do_hit_points},
     {A_DOGEMNUMBER, do_gem_number},
     {A_DOBLOOD, do_blood},
+    {A_DOAMBIENTNOISE, do_ambient_noise},
     {A_NULLANIMATOR, null_animator},
 };
 

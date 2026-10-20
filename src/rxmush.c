@@ -1,4 +1,4 @@
-/* RXMUSH.C: the mushroom levels' spore holes. */
+/* RXMUSH.C: the mushroom levels' spore holes, and the chains to climb. */
 #include "behave.h"
 
 /* RXMUSH.C:11 DOSPOREHOLE: an invisible vent (type 0x47, OF_RATE) on a 14-run cycle: it
@@ -70,5 +70,73 @@ int do_spore(obj_t *o)
                   (uint16_t)(o->y - 3))->gv[0] = 0;
         obj_kill(o);
     }
+    return 0;
+}
+
+/* RXMUSH.C:258 DOCHAIN: a chain to climb (type 0x42, priority 0x15). On goblin2 (level 23)
+ * it hangs from the goblin boss's platform and moves with it. Up or down while touching it
+ * grabs it (unless recovering from a hit, attacking, or impaled / dead): the player starts
+ * climbing as on a vine (FYOUBEGINCLIMB, but with _Vine_x 0 and the player 3 pixels off the
+ * chain's x), and GenericVar[5] bit 0x20 marks the chain held. While held it pulls the player
+ * a pixel a run back to its place (turning on the chain moves the player 5 pixels); leaving
+ * the chain lets go, and the player falls unless another chain is held. */
+int do_chain(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (G.level == 0x17 && G.boss)
+        o->x = (uint16_t)(G.boss->x + 0x10);
+    if (!(o->gv[5] & 0x20)) {
+        if (!key(K_UP) && !key(K_DOWN))
+            return 0;
+        if (!obj_overlap(you, o) || (G.game_flags & 8) || (G.game_flags & 2) ||
+            you->animator == A_YOUBEGINIMPALE || you->animator == A_NULLANIMATOR)
+            return 0;
+        set_scroll_bounds(0x8C, G.window_xsize);
+        G.window_ysize = 0x8C;
+        G.center_off = 'V';
+        o->gv[5] |= 0x20;
+        you->gv[5] &= ~4 & ~1;
+        you->frame_no = 0;
+        you->xspeed = 0;
+        you->yspeed = 0;
+        you->friction = 199;
+        you->animator = A_YOUCLIMB;
+        you->anim_inc = 1;
+        you->max_frames = 6;
+        G.vine_x = 0;
+        G.game_flags |= 1;
+        you->frame_count_max = (G.game_flags & 4) ? 5 : 6;
+        you->frame_count = you->frame_count_max;
+        obj_image(you, G.img[G.you_climb]);
+        you->x = you->xdir == 0 ? (uint16_t)(o->x + 3) : (uint16_t)(o->x - 3);
+        return 0;
+    }
+    if (!obj_overlap(you, o)) {
+        bool riding_another = false;
+        for (const obj_t *p = G.list[LIST_MAIN]; p; p = p->next)
+            if (p->priority == 0x15 && p != o && (p->gv[5] & 0x20))
+                riding_another = true;
+        if (riding_another)
+            o->gv[5] &= 0xDF;
+        else
+            you->animator = A_YOUBEGINFALL;
+    }
+    if (you->animator != A_YOUCLIMB) {
+        o->gv[5] &= 0xDF;
+        return 0;
+    }
+    const uint16_t x = you->xdir == 0 ? (uint16_t)(o->x + 3) : (uint16_t)(o->x - 3);
+    if (you->x < x)
+        player_right(1, you);
+    else if (you->x > x)
+        player_left(1, you);
+    return 0;
+}
+
+/* RXMUSH.C:333 DOCHAINEND: the chain's last link (type 0x43) follows the boss's platform. */
+int do_chain_end(obj_t *o)
+{
+    if (G.boss)
+        o->x = (uint16_t)(G.boss->x + 0x10);
     return 0;
 }

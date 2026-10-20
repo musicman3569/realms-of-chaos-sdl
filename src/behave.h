@@ -2,7 +2,7 @@
  * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C),
  * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
  * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMP.C / RXSWAMPF.C), rxmush.c
- * (RXMUSH.C), rxcastle.c (RXCASTLE.C).
+ * (RXMUSH.C), rxcastle.c (RXCASTLE.C), rxdead.c (RXDEAD.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -112,9 +112,19 @@ int frog_land(obj_t *o);
 /* rxmush.c */
 int do_spore_hole(obj_t *o);
 int do_spore(obj_t *o);
+int do_chain(obj_t *o);
+int do_chain_end(obj_t *o);
 
 /* rxcastle.c */
+int do_knife_guard(obj_t *o);
+int do_guard_knife(obj_t *o);
+int do_bomb_guard(obj_t *o);
+int do_bomb(obj_t *o);
 int bomb_exploder(obj_t *o);
+int do_back_stars(obj_t *o);
+
+/* rxdead.c */
+int do_wisp(obj_t *o);
 
 /* rxyou.c */
 int you_begin_run(obj_t *o);
@@ -148,6 +158,7 @@ int drop_gem_spawner(obj_t *o);
 int do_hit_points(obj_t *o);
 int do_gem_number(obj_t *o);
 int do_blood(obj_t *o);
+int do_ambient_noise(obj_t *o);
 int screen_center(obj_t *o);
 
 #endif

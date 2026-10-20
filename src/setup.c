@@ -401,6 +401,12 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[0] = o->gv[1] = 0;
         o->gv[3] = 0;
         break;
+    case 0x31: /* a cat's bomb: thrown up (and at the cat's xSpeed), then DOBOMB */
+        o->gv[4] = 0x5F;
+        o->yspeed = -4000;
+        o->priority = 0x3A;
+        o->animator = A_GENERICBEGINJUMP;
+        break;
     case 0x32: /* bird */
         o->animator = A_DOBIRD;
         o->priority = 0xF0;
@@ -423,7 +429,7 @@ void setup_obj(obj_t *o, uint8_t type)
         o->max_frames = 5;
         o->anim_inc = 0;
         o->gv[3] = 0;
-        o->animator = 0x0291; /* DOKNIFEGUARD */
+        o->animator = A_DOKNIFEGUARD;
         o->flags &= 0xFE;
         o->xspeed = 7000;
         o->frame_count_max = 8;

@@ -187,6 +187,20 @@ player's position and animator, the inventory and the level's counters at the en
   sheds 6 pieces a crack of the whip and (tested with its damage preset to 38) splits into two
   medium ones; a statue bomb touched by the player bursts into 9 puffs and three flaming blobs.
   All 29 levels run 20,000 ticks for both characters, attacking, during a sweep.
+- Port, the castle creatures, the wisp and the chains (notes, "The castle, the wisp and the
+  chains"): `src/rxcastle.c` DOKNIFEGUARD, DOGUARDKNIFE, DOBOMBGUARD, DOBOMB (also called in
+  the air by GENERICUP / GENERICFALL for priority 0x3a) and DOBACKSTARS; new `src/rxdead.c`
+  DOWISP with the `_Circle1` table; in `src/rxmush.c` DOCHAIN and DOCHAINEND; in `src/rxyou.c`
+  DOAMBIENTNOISE (it only picks the sample while sound is a stub). SETUPOBJ gained type 0x31
+  (the bomb); objects gained a `parent` field (a wisp light's wisp). Verified headless: on
+  castle2 the knife throwers face the player, back off to the roof edges, raise an arm and throw
+  every 8 x 0x79 ticks, and the knives fly at 145 px/s and hurt; on castle1 a bomb thrower lobs
+  a bomb at tick 0x4b1 that lands and bursts into burning puffs, and three cracks of the whip
+  kill it for a prize; castle2's stars show only on the night sky's colour-1 pixels; on dead2
+  the wisp circles with its four lights and sparks and makes the player walk to it (about 109
+  px/s); on goblin2 the player grabs the chain with up, climbs it, rides it on the boss's
+  platform, jumps off, and drops off its bottom. A sweep of all 29 levels (both characters,
+  attacking, 20,000 ticks) reaches no unported animator outside the bosses.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -194,15 +208,15 @@ player's position and animator, the inventory and the level's counters at the en
 
 ## Next steps
 
-1. **More behaviours** (next), a module at a time; a `--sweep` run lists the animators a level
-   reaches that aren't ported (it needs `--screenshot`, or it opens a window). What a sweep of
-   every level still reaches: DOAMBIENTNOISE (every level; sound only); the castle creatures
-   in RXCASTLE.C, DOBOMBGUARD (5, 6; it throws DOBOMB) and DOKNIFEGUARD, DOBACKSTARS (6);
-   DOWISP (18); DOCHAIN / DOCHAINEND (21, 23); and the bosses and their cameras: ROSSWAIT (7),
-   DODRAGONBOB / DRAGONCENTER (10), CRUSHERCENTER (15), BOSSCENTER (16), DEMONWAIT /
-   DEMONCENTER (25). The skeletons (SKEL*, DOSKELHEAD) in RXSKELF.C are spawned, not placed;
-   DOTORCH (type 0x2c) isn't placed by INITOBJ either. `tools/animators.py` maps object types
-   to animators. Left over from the damage milestone: the special item (key 6, spawn type 0x37
+1. **The bosses** (next), one at a time with their cameras; a `--sweep` run lists the
+   animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
+   window). Only these are left: ROSSWAIT (7: Ross, RXROSSF.C), DODRAGONBOB / DRAGONCENTER (9,
+   10), CRUSHERCENTER (15), BOSSCENTER (16), DEMONWAIT / DEMONCENTER (25). The skeletons (SKEL*,
+   DOSKELHEAD) in RXSKELF.C are spawned by a boss, not placed; DOTORCH (type 0x2c) isn't placed
+   by INITOBJ either. The priorities GENERICUP / GENERICFALL still skip (`own_behaviour` in
+   `src/rxgenerl.c`: 0x3b, 0x3c, 0x66, 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the
+   boulders. `tools/animators.py` maps object types to animators. Left over from the damage
+   milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats
    0x68 via FINDBOLOPOS, goblin2's snake platform), the cat skeleton's bones in ENEMYHIT, the

@@ -490,6 +490,45 @@ checks `HitPoints[0]`, the female's hit points, whichever character is playing.
 - **Drips** (DODROP): an invisible tap drops water (1 in 4000 a tick); the cat skeleton
   (DOCATSKELETON) walks and falls off ledges like the other walkers.
 
+**The castle, the wisp and the chains.**
+
+- **Knife throwers** (type 0x35, DOKNIFEGUARD, OF_RATE). Every 0x79 ticks of its Counter,
+  GenericVar[0] counts a step: at 2 the routine restarts (1 in 4) or skips to 5 (1 in 4 of the
+  rest; the `FRANDOM(4)`s are inlined as `rand() << 2 / 0x8000`), at 6 the arm goes up, at 7 it
+  throws and at 8 it comes down. The step jump table (`JMP CS:[BX+068b]`, on GenericVar[0] - 2)
+  was read from the EXE. The images are set straight into ImageID, not with OBJIMAGE, so the
+  box stays frame 0's. It backs away (the walk played backwards: AnimInc -1) from a player
+  nearer than 100 pixels and walks to one farther than 0x74, only where the floor bit (0x800)
+  of the cell under its leading corner is set. The knife (type 0x24 with Animator DOGUARDKNIFE,
+  xSpeed 0x4000) keeps `|dx| / (y - (player y + 8))` in GenericVar[0], an *unsigned* division:
+  from above the player it is 0 (straight), from below it climbs a pixel every that many, and
+  level with the player the original divides by zero (the port throws straight).
+- **Bomb throwers** (type 0x30, DOBOMBGUARD) throw at Counter 0x4b1 and rest until 0x579. The
+  bomb (type 0x31: GenericVar[4] 0x5f, ySpeed -4000, priority 0x3a, GENERICBEGINJUMP) is DOBOMB
+  in the air too: GENERICUP / GENERICFALL call it for priority 0x3a, so it keeps flying
+  sideways at the thrower's 16000. Landing sets GenericVar[5] bit 0, which (like touching the
+  player) sets it off: it becomes an invisible BOMBEXPLODER.
+- **Back stars** (type 0x16, DOBACKSTARS) hold their place in the view, not the map, so they
+  look infinitely far away, and show only where the background tile's pixel under them is
+  colour 1 (read from the tile in Mode X plane order: `(x & 3) * 64 + (y & 15) * 4 + (x & 15) / 4`).
+  On castle1 / castle2 they are clamped to the part of the map with windows.
+- **The wisp** (type 0x5e, DOWISP, RXDEAD.C) runs its own rate (xSpeed 10000) and steps
+  round `_Circle1` (468a:0000, a far segment: 135 signed (dx, dy) byte pairs, then "cc"),
+  using GenericVar[2] as a near pointer into it; the steps' x sum is -1, made up by an extra
+  pixel at each lap. Its four lights (two swinging sideways 10 px, two up and down 12 px) are
+  more wisps (GenericVar[1] 1 / 2) holding the wisp's pointer in GenericVar[0]; GenericVar[1] 3
+  are the sparks. Within 160 x 75 pixels it sets `_WispWalk` (DS:19d9), which the player's
+  FYOURUN / FYOUHORIZ obey like held arrow keys: the player walks to the wisp.
+- **Chains** (type 0x42, DOCHAIN, RXMUSH.C) are climbed like vines with `_Vine_x` 0: up or down
+  while touching one starts YOUCLIMB directly, and GenericVar[5] bit 0x20 marks the chain
+  held. Each run it pulls the player a pixel back to 3 pixels off its x; leaving every held
+  chain (priority 0x15) is YOUBEGINFALL. On goblin2 (level 23) the chain and its end (type
+  0x43, DOCHAINEND) hang from `_Boss`, the goblin boss's platform, at x + 0x10. On level 15
+  they are NULLANIMATOR pieces of the crusher.
+- **Ambient noise** (type 0x5c, FDOAMBIENTNOISE) plays the level's background sample again
+  whenever the last has ended, a sample per group of levels (`do_ambient_noise` in
+  `src/rxyou.c` has the table). It does nothing on a sound card with 3 voices or fewer.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

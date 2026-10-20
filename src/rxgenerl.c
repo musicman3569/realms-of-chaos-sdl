@@ -113,9 +113,12 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x39:
         do_spore(o);
         return;
-    case 0x3A: case 0x3B: case 0x3C:
+    case 0x3A:
+        do_bomb(o);
+        return;
+    case 0x3B: case 0x3C:
     case 0x66: case 0x49: case 0x47: case 0x97: case 0x4A:
-        return; /* DOBOMB, ROSSPIECE, ROSSJUMP, ...: not ported yet */
+        return; /* ROSSPIECE, ROSSJUMP, ...: not ported yet */
     case 0x4E:
         if (!falling)
             break;
