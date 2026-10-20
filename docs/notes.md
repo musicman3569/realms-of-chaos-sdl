@@ -400,6 +400,45 @@ left corner; it blinks on the last hit point and while poisoned, and poison cost
 at each of the player's blinks. Four DOGEMNUMBER digits (GemNumID) and a spinning gem show
 the gem count.
 
+## Enemies
+
+Notes on the creatures ported after the forest ones. Many run with `OF_RATE` (flag 0x40), so
+their animator runs once per carry of `xSpeed` while `Counter` still counts ticks. `Flags` bit 0
+is a per-behaviour direction bit for several of them (fireballs, spiders, puffs, poison:
+DOPROJECTILE moves left only when both bit 0 and `xDir` are clear).
+
+- **Gargoyle** (type 0x1d, RXFRSTF.C:526). FDOGARGOYLE is a sparse `switch (Counter)`, which
+  Borland compiles as a search loop over a table of values followed by a table of targets
+  (`MOV CX,5; MOV BX,0df2; CMP AX,CS:[BX]; ... JMP CS:[BX+0Ah]`). Ghidra decompiles it as a call
+  through `puVar2[5]` and leaves the case code undisassembled, so it was read from the raw image.
+  Ticks 1, 0x191, 0x321: if visible, spit a fireball (type 0x24 with Animator DOGARGOYLEFIRE,
+  `GargFireID`, xSpeed 16000) towards the player; 0x7d0: blink; 0x802: `Counter` = 0. The mouth is
+  3 or 21 pixels down depending on the carving (`GargoyleID[1]`, level 4) and the side.
+- **Flame vents** (type 0x33, FDOCAVEHOLE): info 'r' / 'l' / 'd' / other. Between ticks 1500
+  and 2000 every run spawns a DOTORCHPUFF (type 0x24): six frames of `ExplodeID[6..]`, drifting,
+  burning while `GenericVar[0]` is set. Mud men on level 26 (lava) shed the same puffs.
+- **Spiders** (type 0x1e, FDOCAVESPIDER) write their thread into the foreground map: tile 0x4f
+  at each cell they enter going down (MAPUPDATE redraws it), 0 climbing back. They spit poison:
+  type 0x2f, a GENERICBEGINFALL with DOPROJECTILE kind 3.
+- **Falling spikes** (type 0x1c, DOCAVEFALLSPIKES) rattle (sample 0x53, jiggling a pixel)
+  within 64 / 32 pixels and drop within 32 / 16 (the hard difficulties halve it); the
+  Animator they get, `_Img.GemNumID + 0x1b`, is 0x415b, GENERICBEGINFALL.
+- **Boars** (type 0x51, RXSKELF.C): Boar1ID with a spear (xSpeed 0x1060), Boar3ID breathing fire
+  (xSpeed 8000; the speed doubles as the kind). A boar wholly in view at the player's height
+  attacks from more than 60 pixels with a spear (type 0x52, priority 0x3e: GENERICBEGINJUMP,
+  GENERICUP / GENERICFALL call FDOBOARSPEAR, landing on DOBOARSPEAR) or three fireballs (type
+  6, GenericVar[2] 3-5); a spearless boar (Boar2ID, GenericVar[0] 1) charges from under 30.
+- **Goblins** (type 0x3b, RXGOBLIN.C; fists before level 14, clubs after): stand and turn every
+  300 ticks; after three turns facing the player they run (17000 / 20000 a step), punch within
+  reach (a type 0x3f GOBLINFIST hit box that lasts 300 / 100 ticks), and jump off ledges, where
+  GOBLINJUMP (priority 0x33 in GENERICUP / GENERICFALL) steers them and stakes kill them. The
+  speeds read as `0x4268` and `_SavePal + 0x50` in the decompile (both are constants: 17000 and
+  0x4dd0 + 0x50 = 20000); `_SavePal + 0x23d` is ENEMYHITPAUSE.
+- **Mud men** (type 0x3c, RXSWAMPF.C) start 8 pixels in the ground and rise while CANMOVE says
+  they could fall. MUDMANHIT adds a point of its own to GenericVar[3] and throws mud (type 0x38,
+  which SETUPOBJ sends to case 0: a GENERICBEGINJUMP with random speeds); 10 points kill (60 for
+  the lava men).
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

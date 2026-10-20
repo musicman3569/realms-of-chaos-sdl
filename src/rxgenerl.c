@@ -101,8 +101,14 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0xE5:
         do_collectable(o);
         return;
-    case 0x3A: case 0x3B: case 0x3C: case 0x35: case 0x33: case 0x39:
-    case 0x66: case 0x49: case 0x47: case 0x97: case 0x3E: case 0x4A:
+    case 0x33:
+        goblin_jump(o);
+        return;
+    case 0x3E:
+        do_boar_spear(o);
+        return;
+    case 0x3A: case 0x3B: case 0x3C: case 0x35: case 0x39:
+    case 0x66: case 0x49: case 0x47: case 0x97: case 0x4A:
         return; /* DOBOMB, ROSSPIECE, ROSSJUMP, ...: not ported yet */
     case 0x4E: case 100: case 0x31: case 0xE7:
         if (falling)

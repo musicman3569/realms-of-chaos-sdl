@@ -44,6 +44,16 @@ void setup_obj(obj_t *o, uint8_t type)
             G.you_climb = IMG_FEMCLIMB, G.you_attack = IMG_FEMATTAC;
         }
         break;
+    case 0x00:
+    case 0x38: /* a blob of mud (case 0x38 jumps to case 0) */
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0x46;
+        o->xspeed = (int16_t)frandom(16000);
+        o->yspeed = (int16_t)-frandom(3000);
+        o->gv[4] = 0x78;
+        o->gv[0] = 0;
+        o->gv[5] = 0;
+        break;
     case 0x0E: /* debris (statue, crumbling platform) */
         o->animator = A_GENERICBEGINJUMP;
         o->priority = 0xB9;
@@ -377,6 +387,12 @@ void setup_obj(obj_t *o, uint8_t type)
         }
         o->flags |= 1;
         break;
+    case 0x2F: /* a spider's drop of poison (DOPROJECTILE kind 3) */
+        o->priority = 0x29;
+        o->animator = A_GENERICBEGINFALL;
+        o->yspeed = 4000;
+        o->gv[0] = 3;
+        break;
     case 0x30: /* bomb-throwing cat */
         o->flags |= OF_RATE | 0x10;
         o->xspeed = 0x2000;
@@ -459,6 +475,13 @@ void setup_obj(obj_t *o, uint8_t type)
         o->animator = A_DOMOSQUITO;
         o->gv[0] = o->gv[1] = o->gv[2] = o->gv[4] = 0;
         o->gv[3] = 0;
+        break;
+    case 0x3F: /* a goblin's fist or club */
+        o->animator = A_GOBLINFIST;
+        o->priority = 0x33;
+        o->gv[2] = 0;
+        o->counter = 0;
+        o->gv[5] |= 1;
         break;
     case 0x40: /* goblin walls */
         o->flags |= OF_RATE;
@@ -581,6 +604,18 @@ void setup_obj(obj_t *o, uint8_t type)
         o->counter = 0;
         o->gv[0] = o->gv[1] = o->gv[2] = 0;
         o->xdir = lv == 0x13 ? 1 : 0;
+        break;
+    case 0x52: /* a boar's spear */
+        o->surface_flags &= 0xFE;
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0x3E;
+        o->gv[4] = 0x82;
+        o->yspeed = -6000;
+        o->counter = 0;
+        o->gv[5] = 0;
+        o->gv[1] = 0;
+        o->gv[2] = 0;
+        o->gv[0] = 0;
         break;
     case 0x5C: /* ambient sounds */
         o->animator = A_DOAMBIENTNOISE;

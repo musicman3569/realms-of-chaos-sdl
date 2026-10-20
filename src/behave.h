@@ -1,6 +1,7 @@
 /* Object behaviours (Animator functions), one file per original module: rxgenerl.c
  * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C),
- * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C).
+ * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
+ * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMPF.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -55,6 +56,10 @@ int do_bird(obj_t *o);
 int do_bat(obj_t *o);
 int bandit_walk(obj_t *o);
 int wolf_run(obj_t *o);
+int do_gargoyle(obj_t *o);
+int do_gargoyle_fire(obj_t *o);
+int do_cave_hole(obj_t *o);
+int do_cave_spider(obj_t *o);
 
 /* rxplat.c */
 int floating_platform(obj_t *o);
@@ -70,6 +75,23 @@ void maintain_platform(obj_t *o);
 
 /* rxcave.c */
 int do_cave_spikes(obj_t *o);
+int do_cave_fall_spikes(obj_t *o);
+int do_torch_puff(obj_t *o);
+
+/* rxskel.c */
+int do_boar(obj_t *o);
+int do_boar_attack(obj_t *o);
+int do_boar_spear(obj_t *o);
+
+/* rxgoblin.c */
+int goblin_stand(obj_t *o);
+int goblin_run(obj_t *o);
+int goblin_hit(obj_t *o);
+int goblin_fist(obj_t *o);
+void goblin_jump(obj_t *o);
+
+/* rxswamp.c */
+int mud_man_walk(obj_t *o);
 
 /* rxyou.c */
 int you_begin_run(obj_t *o);

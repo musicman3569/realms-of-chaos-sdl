@@ -152,6 +152,22 @@ player's position and animator, the inventory and the level's counters at the en
   display; the forest1 exit leads to level 1 with the inventory; the stakes impale and the
   caves' water drowns, then the level restarts; a castle1 warp moves the player. Every level
   runs 20,000 ticks with both characters attacking during a sweep.
+- Port, the next creatures (notes, "Enemies"): in `src/rxforest.c` (RXFRSTF.C) the gargoyles
+  (FDOGARGOYLE, FDOGARGOYLEFIRE), the flame vents (FDOCAVEHOLE) and the spiders (FDOCAVESPIDER,
+  with their thread written into the foreground map and their poison); in `src/rxcave.c`
+  DOCAVEFALLSPIKES and DOTORCHPUFF; `src/rxskel.c` (RXSKELF.C) the boars (FDOBOAR,
+  FDOBOARATTACK, FDOBOARSPEAR, and the fire boar's three fireballs); `src/rxgoblin.c`
+  (RXGOBLIN.C) GOBLINSTAND, GOBLINRUN, GOBLINHIT, GOBLINFIST and GOBLINJUMP (hooked into
+  GENERICUP / GENERICFALL with the spear); `src/rxswamp.c` (RXSWAMPF.C) FMUDMANWALK and
+  MUDMANHIT. SETUPOBJ gained the spawned types 0x00 / 0x38 (mud), 0x2f (poison), 0x3f (fist)
+  and 0x52 (spear). Verified headless: gargoyle fireballs leave its mouth at 142 px/s at ticks
+  1 and 401; falling spikes rattle and drop as the player walks under; spiders let themselves
+  down on a drawn thread, climb back and spit three drops; vents puff flames from tick 1500 to
+  2000; a goblin turns three times, runs at 178 px/s, punches the player and runs on; a boar
+  throws its spear (which hits and bounces back), then walks at 37 px/s turning every 0x8fd
+  ticks; a mud man rises 8 pixels out of the ground, walks at 24 px/s and loses 4 points and 6
+  blobs to each crack of the male's whip, dying at the third. All 29 levels run 20,000 ticks
+  for both characters, attacking, during a sweep, with no unported object types.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -160,9 +176,14 @@ player's position and animator, the inventory and the level's counters at the en
 ## Next steps
 
 1. **More behaviours** (next), a module at a time; a `--sweep` run lists the animators a level
-   reaches that aren't ported. By how many levels need them: DOGARGOYLE (10), DOCAVEHOLE (5),
-   GOBLINSTAND, DOBOAR, MUDMANWALK, DOCAVESPIDER, DOCAVEFALLSPIKES, then the rest.
-   `tools/animators.py` maps object types to animators.
+   reaches that aren't ported (it needs `--screenshot`, or it opens a window). What a sweep of
+   every level still reaches: DOAMBIENTNOISE (every level; sound only), the cave platforms
+   DOFALLINGPLAT / DOSQUAREPLAT (21, 26), DOCONTAINERBOMB (23, 26), DOMOSQUITO and SWAMPRAFT
+   (8, 9), DOSPOREHOLE (12, 26), DOBOMBGUARD (5, 6), FROGPLAT / DOCATSKELETON / DODROP (3),
+   DOROCKMONSTER (14), DOWISP (18), DOCHAIN / DOCHAINEND (23), DOBACKSTARS (6), and the
+   bosses and their cameras: ROSSWAIT (7), DODRAGONBOB / DRAGONCENTER (10), CRUSHERCENTER
+   (15), BOSSCENTER (16), DEMONWAIT / DEMONCENTER (25). The skeletons (SKEL*, DOSKELHEAD) in
+   RXSKELF.C are spawned, not placed. `tools/animators.py` maps object types to animators.
    Left over from the damage milestone: the special item (key 6, spawn type 0x37 /
    DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), MAINTAINBLOCK (spiked walls block),

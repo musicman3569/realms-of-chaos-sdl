@@ -377,3 +377,236 @@ void spike_check(obj_t *o, uint8_t is_wall)
     }
     hit_player(o);
 }
+
+/* RXFRSTF.C:526 FDOGARGOYLE (DOGARGOYLE calls it): a gargoyle statue on a 2050-tick cycle
+ * (Borland's sparse switch: a table of five Counter values at CS:0df2, then their targets).
+ * At ticks 1, 401 and 801, if it's in view, it spits a fireball at the player from its
+ * mouth (3 pixels down; 21 for GargoyleID[1] shooting left or GargoyleID[0] shooting
+ * right); at 2000 it blinks. On those ticks it doesn't hurt. 20 damage points destroy it. */
+int do_gargoyle(obj_t *o)
+{
+    switch (o->counter) {
+    case 1: case 0x191: case 0x321: {
+        if (!obj_visible(o))
+            return 0;
+        play_sample(0x61, NULL);
+        const bool right = !(G.you && G.you->x < o->x);
+        const uint16_t x = right ? (uint16_t)(o->x + o->xsize) : (uint16_t)(o->x - 7);
+        const bool carving = o->image == G.img[IMG_GARGOYLE + 1];
+        const uint16_t y = (uint16_t)(o->y + (carving != right ? 0x15 : 3));
+        obj_t *s = spawn_obj(0x24, LIST_MAIN, G.img[IMG_GARGFIRE], x, y);
+        s->animator = A_DOGARGOYLEFIRE;
+        s->flags |= OF_RATE | OF_HITTABLE;
+        s->xspeed = 16000;
+        if (right)
+            s->flags |= 1;
+        else
+            s->flags &= 0xFFFE;
+        return 0;
+    }
+    case 0x7D0:
+        o->blink_color = 0x4A;
+        obj_blink(o, 2, 5, 5);
+        return 0;
+    case 0x802:
+        o->counter = 0;
+        return 0;
+    default:
+        break;
+    }
+    hit_player(o);
+    if (o->flags & OF_HIT) {
+        play_sample(0x83, NULL);
+        enemy_hit(o, 0x14);
+    }
+    return 0;
+}
+
+/* RXFRSTF.C:577 FDOGARGOYLEFIRE: the gargoyle's fireball flies a pixel a run (OF_RATE,
+ * xSpeed 16000) left or right (Flags bit 0), blinking. A wall, the map's edge, the player's
+ * weapon or the player ends it in an explosion (UpOffset 11 is the "done" mark). */
+int do_gargoyle_fire(obj_t *o)
+{
+    can_move(o);
+    if (o->blinks == 0) {
+        o->blink_color = 0x1D;
+        obj_blink(o, 4, 2, 2);
+    }
+    bool moved = false;
+    if ((o->flags & 1) && can_go_right(o) && room_right(o)) {
+        o->x++;
+        moved = true;
+    } else if (!(o->flags & 1) && can_go_left(o) && room_left(o)) {
+        o->x--;
+        moved = true;
+    }
+    if (!moved)
+        o->up_offset = 0x0B;
+    if (o->flags & OF_HIT)
+        o->up_offset = 0x0B;
+    if (G.you && obj_collide(o, G.you)) {
+        o->up_offset = 0x0B;
+        hit_player(o);
+    }
+    if (o->up_offset > 10) {
+        play_sample(0x62, NULL);
+        spawn_obj(0x0D, LIST_MAIN, G.img[IMG_EXPLODE], (uint16_t)(o->x - 3),
+                  (uint16_t)(o->y - 3))->gv[0] = 0;
+        obj_kill(o);
+    }
+    return 0;
+}
+
+/* RXFRSTF.C:607 FDOCAVEHOLE: a vent (OF_RATE, a run every 44 ticks) that puffs flames
+ * (DOTORCHPUFF) from tick 1500 to 2000 of each cycle: info 'r' / 'l' blows sideways (the side
+ * hole frame, CaveHoleID[1]), 'd' down (invisible), anything else up. On the demon's level
+ * (25) a landed spike becomes a hole like this ('u'): it blinks from 1900, vanishes at 2200
+ * in a puff and goes at 2350. */
+int do_cave_hole(obj_t *o)
+{
+    const int16_t kind = o->gv[0];
+    if (o->gv[1] == 0) {
+        o->gv[1] = 1;
+        if (kind == 'r' || kind == 'l') {
+            o->xdir = kind == 'r';
+            obj_image(o, G.img[IMG_CAVEHOLE + 1]);
+        } else if (kind == 'd') {
+            o->image = NULL;
+        }
+    }
+    if (o->image && o->counter > 0x76C && G.level == 0x19 && o->blinks == 0) {
+        o->blink_color = 0x4A;
+        obj_blink(o, 10, 3, 7);
+    }
+    if (o->counter <= (G.level == 0x19 ? 0x898 : 0x5DC))
+        return 0;
+    if (o->gv[1] == 1) {
+        o->gv[1] = 2;
+        if (G.level == 0x19) {
+            play_sample(0x62, NULL);
+            o->x = (uint16_t)(o->x - 4);
+            o->image = NULL;
+        } else {
+            play_sample(0x91, o);
+        }
+    }
+    if (o->counter > (G.level == 0x19 ? 0x92E : 2000)) {
+        o->gv[1] = 1;
+        o->counter = 0;
+        if (G.level == 0x19) {
+            obj_kill(o);
+            return 0;
+        }
+    }
+    obj_t *p = spawn_obj(0x24, LIST_MAIN, G.img[IMG_EXPLODE], (uint16_t)(o->x + 1),
+                         (uint16_t)(o->y - 5));
+    p->animator = A_DOTORCHPUFF;
+    if (kind == 'r' || kind == 'l') {
+        p->xspeed = 16000;
+        p->yspeed = 0;
+        if (kind == 'r')
+            p->flags |= 1;
+        else
+            p->flags &= 0xFFFE;
+        p->y = (uint16_t)(p->y + 3);
+        p->x = (uint16_t)(kind == 'r' ? p->x + 2 : p->x - 2);
+    } else if (kind == 'd') {
+        p->xspeed = 0;
+        p->yspeed = 16000;
+        p->gv[1] = 1;
+        p->y = (uint16_t)(p->y + 4);
+    } else {
+        p->xspeed = 0;
+        p->yspeed = 16000;
+        p->gv[1] = 0;
+    }
+    p->max_frames = 6;
+    p->anim_inc = 0;
+    p->frame_count_max = 0x2D;
+    p->frame_count = 0x2D;
+    p->gv[0] = 1;
+    return 0;
+}
+
+/* RXFRSTF.C:686 FDOCAVESPIDER: a spider on its thread (OF_RATE, a run every 16 ticks).
+ * GenericVar[0]: 0 climbing (Flags bit 0 clear, SpiderID[0]) or letting itself down (bit 0
+ * set, SpiderID[1]) a pixel a run, writing its thread into the foreground map (tile 0x4f) as
+ * it goes down and clearing it climbing back; after 251 ticks (then 1 chance in 10 a run) or
+ * when it can't go on, it turns round or (1 in 2) waits. 1 waiting: after 251 ticks it spits
+ * (1 in 2, unless there's floor just below), else it moves again. 2 spitting: three drops of
+ * poison (type 0x2f, PoisonID[0..2]) 11 ticks apart, all with the same random speed and
+ * side. */
+int do_cave_spider(obj_t *o)
+{
+    bool must_go = false;
+    switch (o->gv[0]) {
+    case 1:
+        if (o->counter < 0xFB)
+            break;
+        if (frandom(2) != 0 &&
+            !(map_cell((unsigned)(uint16_t)(o->y + o->ysize + 6) >> 4,
+                       (unsigned)(uint16_t)(o->x + 2) >> 4) & 0x800)) {
+            o->gv[1] = (int16_t)frandom(9000);
+            o->gv[2] = (int16_t)frandom(2);
+            o->gv[4] = 0;
+            o->gv[0] = 2;
+            o->counter = 0;
+            break;
+        }
+        o->gv[0] = 0;
+        break;
+    case 2: {
+        if (o->counter < 0x0B)
+            break;
+        o->counter = 0;
+        const int16_t n = o->gv[4]++;
+        obj_t *p = spawn_obj(0x2F, LIST_MAIN, G.img[IMG_POISON + n], (uint16_t)(o->x + 2),
+                             (uint16_t)(o->y + o->ysize));
+        p->xspeed = o->gv[1];
+        if (o->gv[2] == 0)
+            p->flags |= 1;
+        else
+            p->flags &= 0xFFFE;
+        if (o->gv[4] == 3)
+            o->gv[0] = 0;
+        break;
+    }
+    default:
+        if (!(o->flags & 1)) {
+            if (!can_go_up(o)) {
+                must_go = true;
+            } else {
+                if ((o->y & 0x0F) == 0)
+                    map_set_fg((unsigned)(uint16_t)(o->y + 1) >> 4, o->x >> 4, 0);
+                o->y--;
+            }
+        } else {
+            if (!can_go_down(o) || (G.level == 0x0D && (uint16_t)(o->y + o->ysize) > 0x9F)) {
+                must_go = true;
+            } else {
+                if ((o->y & 0x0F) == 0)
+                    map_set_fg(o->y >> 4, o->x >> 4, 0x4F);
+                o->y++;
+            }
+        }
+        if (!must_go && (o->counter < 0xFB || frandom(10) != 0))
+            break;
+        o->counter = 0;
+        if (frandom(2) != 0) {
+            if (o->flags & 1) {
+                o->image = G.img[IMG_SPIDER];
+                o->flags &= 0xFFFE;
+            } else {
+                o->image = G.img[IMG_SPIDER + 1];
+                o->flags |= 1;
+            }
+            break;
+        }
+        o->gv[0] = 1;
+        break;
+    }
+    hit_player(o);
+    if (o->flags & OF_HIT)
+        enemy_hit(o, 2);
+    return 0;
+}
