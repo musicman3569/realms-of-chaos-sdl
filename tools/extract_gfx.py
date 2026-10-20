@@ -27,7 +27,8 @@ Formats (from LOADSPRITE, LOADLEVEL and the DRW*.ASM blitters in ROC.EXE):
         (after plane 3, the right half of the tile), 5 end. The left half is plane bytes 0-1
         (pixels 0-7), the right half bytes 2-3.
   .led  768-byte palette, u8 Rows, u8 Cols, Rows*Cols u16 background map, the foreground map
-        (3 header bytes + Rows*Cols bytes), five u16 tile counts (bg1, bg2, bg3, fg, bonus),
+        (FGMAP: u16 Cols, Rows*Cols bytes, 1 spare byte), five u16 tile counts (bg1, bg2,
+        bg3, fg, bonus),
         u16 object count + 62-byte objects (SPRITE_LIST: name, info, x, y), then tables.
         Background cell: tile = value & 0x1ff (0-239 layer 1, 240-479 layer 2, 480- layer 3);
         the upper bits are flags. Foreground cell: 0 = none, else low 7 bits pick a tile from
@@ -173,7 +174,7 @@ def load_level(path):
     p = 770
     bg = struct.unpack_from(f"<{rows * cols}H", d, p)
     p += rows * cols * 2
-    fg = d[p + 3:p + 3 + rows * cols]
+    fg = d[p + 2:p + 2 + rows * cols]
     return pal, rows, cols, bg, fg
 
 

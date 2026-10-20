@@ -154,8 +154,10 @@ The format details are in that script's docstring. In short:
 - **Levels** (`LOADLEVEL` in LOADLEV.C, drawn by `FUN_3cb4_0d58`): background cell =
   `value & 0x1ff` into bg layers 1-3 (240 tiles each) plus flag bits 9-14 (not decoded yet);
   foreground byte = 0 or a 7-bit tile index, from `.mfg` if bit 7 is set and `.mbg` if not.
-  Gaps in the scenery use sky/horizon tiles because the parallax backdrop shows through
-  them in the game.
+  The foreground map is an `FGMAP`: a u16 `Cols`, then the table (LOADLEVEL reads
+  Rows*Cols + 3 bytes, so one spare byte follows). Reading the table from offset 3 instead
+  shifts every foreground tile one cell left (tree tops off their trunks, sky showing through
+  the gaps), which the port did at first.
 - Level *n* uses `name[n].led` and the tile set `name[set[n]]`, where the names come from
   `roclevel.txt` and `set[]` is a 29-byte table at DS:033e (e.g. forest2 uses forest1's tiles).
 - Each `.led` ends with 0x600 bytes that `LOADLEVEL` doesn't appear to read (after its

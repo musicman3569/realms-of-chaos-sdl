@@ -83,8 +83,9 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
         return false;
     }
 
-    /* LOADLEVEL: palette, Rows, Cols, BgMap table, FgMap (3 header bytes + table), the five
-     * tile counts, then the object list. */
+    /* LOADLEVEL: palette, Rows, Cols, BgMap table, FgMap (FGMAP: u16 Cols, then the table;
+     * Rows*Cols + 3 bytes are read, so one spare byte follows), the five tile counts, then the
+     * object list. */
     bool ok = len >= 770;
     size_t p = 768;
     if (ok) {
@@ -103,7 +104,7 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
             for (size_t i = 0; i < cells; i++)
                 lv->bg[i] = rd16(d + p + i * 2);
             p += cells * 2;
-            memcpy(lv->fg, d + p + 3, cells);
+            memcpy(lv->fg, d + p + 2, cells);
             p += 3 + cells;
             for (int i = 0; i < 5; i++)
                 lv->tile_count[i] = rd16(d + p + i * 2);
