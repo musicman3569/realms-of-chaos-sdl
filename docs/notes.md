@@ -77,16 +77,48 @@ python tools/rocdat.py game/ROC.DAT extracted
 | Ext    | Count | What it is (first look)                                                  |
 |--------|-------|---------------------------------------------------------------------------|
 | `.voc` | 185   | Creative Voice sound effects                                              |
-| `.spr` | 140   | sprite sets; start with their own file name (`arrow.spr`)                 |
-| `.led` | 42    | levels (e.g. `cas2easy.led`), one per difficulty; begin with a 768-byte palette |
-| `.bg`  | 22    | 131,072-byte background tile graphics                                     |
-| `.mbg` / `.mfg` | 14 each | background / foreground maps per area                        |
+| `.spr` | 140   | sprite sets (1,039 frames in all), see below                              |
+| `.led` | 42    | level maps (29 levels + easy-mode variants such as `cas2easy.led`)        |
+| `.bg`  | 22    | background tile sets (16×16 tiles)                                        |
+| `.mfg` / `.mbg` | 14 each | masked foreground / "bonus" tiles drawn over the background   |
 | `.mid` | 18    | standard MIDI music                                                       |
 | `.txt` | 12    | story and help text with `{n}` colour codes                              |
 | `.pal` | 8     | 768-byte VGA palettes (6-bit components)                                  |
 | `.vga` | 5     | full screens: 768-byte palette, then 320×200 mode 13h pixels              |
 | `.bin` | 3     | 80×25 text-mode screens (character + attribute), e.g. `rocreg.bin`        |
 | other  | 3     | `roc1warp.008/.009` (warp coordinates?), `text.old`                       |
+
+### Graphics
+
+The game runs in VGA **Mode X** (unchained 320×200, four planes), and both the tiles and
+the blitters are organised around planes. `tools/extract_gfx.py` renders everything to
+`gfx/` (screens, sprite sheets, tile sheets, and full maps of all 29 levels):
+
+```
+python tools/extract_gfx.py extracted gfx
+```
+
+The format details are in that script's docstring. In short:
+
+- **Sprites** (`LOADSPRITE`, `_DrawSprite` in DRWSPRIT.ASM): each frame is a `SPRITE`
+  struct (size, hotspot, hit box) followed by a column-major stream of `(op, count)` pairs:
+  0 skip rows, 1 copy pixels, 2 next column, 3 end. After it, at `Data+PostOff`, there's a
+  table of column start offsets, used for clipping. Judging by their names, `_RevSprite` and
+  `_FlipSprite` draw the same data mirrored, so the sprite files hold only one facing.
+- **Background tiles** (`.bg`): 256 bytes each, stored as four 64-byte planes. Drawn by
+  `_DrawSolidBlock`.
+- **Foreground/bonus tiles** (`.mfg`/`.mbg`, `_DrawMaskBlock` in DRWBLOCK.ASM): masked
+  tiles, plane by plane, as `(op, count)` pairs (0 skip, 1/2/3 write both/left/right byte,
+  4 next plane, 5 end).
+- **Levels** (`LOADLEVEL` in LOADLEV.C, drawn by `FUN_3cb4_0d58`): background cell =
+  `value & 0x1ff` into bg layers 1-3 (240 tiles each) plus flag bits 9-14 (not decoded yet);
+  foreground byte = 0 or a 7-bit tile index, from `.mfg` if bit 7 is set and `.mbg` if not.
+  Gaps in the scenery use sky/horizon tiles because the parallax backdrop shows through
+  them in the game.
+- Level *n* uses `name[n].led` and the tile set `name[set[n]]`, where the names come from
+  `roclevel.txt` and `set[]` is a 29-byte table at DS:033e (e.g. forest2 uses forest1's tiles).
+- Each `.led` ends with 0x600 bytes that `LOADLEVEL` doesn't appear to read (after its
+  0x400/0x100/0x100 tables). Not identified yet.
 
 Source modules (from the line-number table): the game is `RX*.C` plus `rocxms.asm`,
 `rocport.asm` and `rocfile.asm`; the engine is `SPRITE.C`, `MOVE.C`, `ANIMTILE.C`,
