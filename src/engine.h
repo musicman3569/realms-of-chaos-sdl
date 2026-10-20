@@ -51,7 +51,7 @@ static inline unsigned fire_power(void) { return Inv.flags >> 4 & 3; }
 
 /* Animator values: offsets of behaviour functions in segment 1000. */
 enum {
-    A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
+    A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_BOMBEXPLODER = 0x08fc, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
     A_ROSSPIECE = 0x0bb0, A_ROSSATTACK = 0x0bce, A_DODROP = 0x0c46, A_DOCATSKELETON = 0x0d95,
     A_DOCAVESPIKES = 0x0da4, A_DOCAVEFALLSPIKES = 0x0ea0, A_DOCAVESPIDER = 0x0fd9,
     A_DOGARGOYLE = 0x0fe8, A_DOGARGOYLEFIRE = 0x0ff7, A_DOCAVEHOLE = 0x1006,
@@ -73,9 +73,10 @@ enum {
     A_DOCONTAINERBOMB = 0x8893, A_CRUMBLINGPLATFORM = 0x8a20, A_CRUMBLEPLATSHAKE = 0x8a6c,
     A_CRUMBLEPLATFALL = 0x8bd7, A_DOPULLEY = 0x8d31, A_PULLYPLATWAIT = 0x8de5,
     A_PULLYPLATMOVE = 0x8e2b, A_PULLYPLATRETURN = 0x8fbc, A_PULLYPLATDIP = 0x9144,
-    A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c,
+    A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c, A_BRIKSHAKE = 0x9659,
     A_SWAMPRAFT = 0x9744, A_ROLLINGBOULDER = 0xa63a, A_MUDMANWALK = 0xafca,
-    A_DOMOSQUITO = 0xafd9, A_FROGLAND = 0xb006, A_DODRAGONBOB = 0xb0ee,
+    A_DOMOSQUITO = 0xafd9, A_DOFROG = 0xafe8, A_FROGLAUNCH = 0xaff7,
+    A_FROGLAND = 0xb006, A_DODRAGONBOB = 0xb0ee,
     A_DRAGONHEADDIE = 0xb139, A_YOUBEGINRUN = 0xb5dd, A_YOURUN = 0xb5ec,
     A_YOUBEGINJUMP = 0xb5fb, A_YOUJUMP = 0xb60a, A_YOUUP = 0xb619, A_YOUBEGINFALL = 0xb628,
     A_YOUFALL = 0xb637, A_YOUHORIZ = 0xb646, A_YOUBEGINCROUCH = 0xb655, A_YOUBEGINSTUN = 0xb664,
@@ -114,6 +115,7 @@ struct obj {
     int16_t gv[6];               /* GenericVar */
     uint8_t surface_flags;
     /* port */
+    obj_t *child;                /* SWAMPRAFT's front piece (a near pointer in GenericVar[0]) */
     bool dead;                   /* unlinked by OBJKILL, freed after the frame */
     obj_t *free_next;
 };
@@ -157,6 +159,7 @@ typedef struct {
     uint8_t whip_hit_count;      /* DS:553a */
     uint16_t secret_found, gem_found, enemy_found, statue_found, enemy_in_level;
     uint8_t monster_counter, monster_number, max_monster_number;
+    uint8_t monster_spawns;      /* DS:38da: GRABSTUFF's spawns from one tile (3 clear it) */
     uint16_t warp[10][2];        /* _WarpCoords: castle1 / castle2 tile types 10-19 */
     uint16_t timer_ticks;        /* ticks towards the next LEVELTIMER run */
     uint16_t splash_side;        /* DS:38c2: SPLASHSPAWNER's side for the next bit */
@@ -240,6 +243,7 @@ static inline uint8_t *you_hp(void)
 int hit_player(obj_t *o);                           /* HITPLAYER */
 void enemy_hit(obj_t *o, uint8_t max_hits);         /* ENEMYHIT */
 void spike_check(obj_t *o, uint8_t is_wall);        /* SPIKECHECK */
+void maintain_block(obj_t *o);                      /* MAINTAINBLOCK: solid objects push the player */
 
 /* Not ported yet: sound. */
 int play_sample(uint8_t n, obj_t *o);               /* PLAYSAMPLE: returns a handle, 0 */

@@ -442,6 +442,22 @@ void setup_obj(obj_t *o, uint8_t type)
         o->flags |= 0x10 | OF_RATE;
         o->surface_flags |= 1;
         break;
+    case 0x3A: /* a rock monster split off a bigger one */
+        o->animator = A_GENERICBEGINFALL;
+        o->priority = 0x31;
+        o->gv[0] = 1;
+        o->gv[3] = 0;
+        o->frame_count_max = 5;
+        o->max_frames = 5;
+        o->frame_no = 0;
+        o->anim_inc = 0;
+        o->counter = 0;
+        o->xspeed = 4000;
+        o->yspeed = 0;
+        o->gv[5] = 0;
+        o->flags |= 0x10 | OF_PLACED;
+        o->surface_flags |= 1;
+        break;
     case 0x3B: /* goblin */
         o->animator = A_GOBLINSTAND;
         o->priority = 0x33;
@@ -475,6 +491,16 @@ void setup_obj(obj_t *o, uint8_t type)
         o->animator = A_DOMOSQUITO;
         o->gv[0] = o->gv[1] = o->gv[2] = o->gv[4] = 0;
         o->gv[3] = 0;
+        break;
+    case 0x3E: /* a frog */
+        o->flags |= 0x10;
+        o->gv[3] = 0;
+        o->gv[0] = 0;
+        o->xspeed = 6000;
+        o->priority = 0x35;
+        o->animator = A_DOFROG;
+        o->frame_count_max = frandom(3); /* its voice (and then the croak's sound handle) */
+        o->gv[5] = 0x0F;
         break;
     case 0x3F: /* a goblin's fist or club */
         o->animator = A_GOBLINFIST;
@@ -550,6 +576,16 @@ void setup_obj(obj_t *o, uint8_t type)
         o->flags |= OF_RATE;
         o->gv[0] = o->gv[1] = 0;
         break;
+    case 0x48: /* a spore, or a statue bomb's flaming blob */
+        o->flags |= 0x10;
+        o->surface_flags &= 0xFE;
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0x39;
+        o->gv[3] = 0;
+        o->gv[4] = 0x78;
+        o->yspeed = -32000;
+        o->gv[5] = 0;
+        break;
     case 0x49: /* goblin platform: "h" horizontal */
         o->surface_flags |= 0x10;
         o->update = 0x1000;
@@ -616,6 +652,11 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[1] = 0;
         o->gv[2] = 0;
         o->gv[0] = 0;
+        break;
+    case 0x5B: /* the raft's front piece */
+        o->animator = A_NULLANIMATOR;
+        o->priority = 0x18;
+        o->flags |= OF_PLACED;
         break;
     case 0x5C: /* ambient sounds */
         o->animator = A_DOAMBIENTNOISE;

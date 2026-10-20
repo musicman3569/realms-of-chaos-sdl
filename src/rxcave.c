@@ -99,3 +99,42 @@ int do_torch_puff(obj_t *o)
         obj_kill(o);
     return 0;
 }
+
+/* RXCAVE.C:14 DODROP: water dripping in the caves (type 0x10 from level 3 on). GenericVar[0]
+ * 0 is the invisible tap: 1 chance in 4000 a tick it lets a drop go (GENERICBEGINFALL): a
+ * small one near the top of the map (y < 15: kind 3, gone 257 calls into its fall), else a
+ * big one (y < 31: kind 2, splashes on landing; lower: kind 1, in the foreground, falling
+ * until it leaves the view or nears the map's bottom). */
+int do_drop(obj_t *o)
+{
+    if (o->gv[0] == 0) {
+        o->image = NULL;
+        if (frandom(4000) != 0)
+            return 0;
+        obj_t *d;
+        if (o->y < 0x1F) {
+            const bool small = o->y < 0x0F;
+            d = spawn_obj(0x10, LIST_MAIN, G.img[IMG_CAVEDROP + (small ? 3 : 2)], o->x, o->y);
+            d->gv[0] = small ? 3 : 2;
+        } else {
+            d = spawn_obj(0x10, LIST_FORE, G.img[IMG_CAVEDROP + 2], o->x, o->y);
+            d->gv[0] = 1;
+        }
+        d->animator = A_GENERICBEGINFALL;
+        d->gv[2] = 0;
+        d->flags &= 0xFB;
+        return 0;
+    }
+    if (o->gv[0] == 1) {
+        if (obj_visible(o) && o->y <= (uint16_t)(G.lv->rows * 16 - 6))
+            return 0;
+    } else if (o->gv[0] == 2) {
+        if (o->animator != A_DODROP)
+            return 0;
+    } else if (++o->gv[2] < 0x101) {
+        return 0;
+    }
+    play_sample(0x56, NULL);
+    obj_kill(o);
+    return 0;
+}

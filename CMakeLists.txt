@@ -21,6 +21,8 @@ add_executable(roc
     src/rxskel.c
     src/rxgoblin.c
     src/rxswamp.c
+    src/rxmush.c
+    src/rxcastle.c
     src/rxyou.c
     src/rxgems.c
     src/rxgrab.c

@@ -1,7 +1,8 @@
 /* Object behaviours (Animator functions), one file per original module: rxgenerl.c
  * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C),
  * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
- * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMPF.C).
+ * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMP.C / RXSWAMPF.C), rxmush.c
+ * (RXMUSH.C), rxcastle.c (RXCASTLE.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -60,6 +61,7 @@ int do_gargoyle(obj_t *o);
 int do_gargoyle_fire(obj_t *o);
 int do_cave_hole(obj_t *o);
 int do_cave_spider(obj_t *o);
+int do_cat_skeleton(obj_t *o);
 
 /* rxplat.c */
 int floating_platform(obj_t *o);
@@ -72,11 +74,18 @@ int pully_plat_move(obj_t *o);
 int pully_plat_return(obj_t *o);
 int pully_plat_dip(obj_t *o);
 void maintain_platform(obj_t *o);
+int do_square_plat(obj_t *o);
+int do_falling_plat(obj_t *o);
+int brik_shake(obj_t *o);
+int do_container_bomb(obj_t *o);
+int swamp_raft(obj_t *o);
+int frog_plat(obj_t *o);
 
 /* rxcave.c */
 int do_cave_spikes(obj_t *o);
 int do_cave_fall_spikes(obj_t *o);
 int do_torch_puff(obj_t *o);
+int do_drop(obj_t *o);
 
 /* rxskel.c */
 int do_boar(obj_t *o);
@@ -89,9 +98,23 @@ int goblin_run(obj_t *o);
 int goblin_hit(obj_t *o);
 int goblin_fist(obj_t *o);
 void goblin_jump(obj_t *o);
+int do_rock_monster(obj_t *o);
+void rock_monster_fall(obj_t *o);
 
 /* rxswamp.c */
 int mud_man_walk(obj_t *o);
+int do_mosquito(obj_t *o);
+int do_frog(obj_t *o);
+int frog_launch(obj_t *o);
+void frog_jump(obj_t *o);
+int frog_land(obj_t *o);
+
+/* rxmush.c */
+int do_spore_hole(obj_t *o);
+int do_spore(obj_t *o);
+
+/* rxcastle.c */
+int bomb_exploder(obj_t *o);
 
 /* rxyou.c */
 int you_begin_run(obj_t *o);

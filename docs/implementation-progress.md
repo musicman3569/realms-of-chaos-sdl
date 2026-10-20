@@ -168,6 +168,25 @@ player's position and animator, the inventory and the level's counters at the en
   ticks; a mud man rises 8 pixels out of the ground, walks at 24 px/s and loses 4 points and 6
   blobs to each crack of the male's whip, dying at the third. All 29 levels run 20,000 ticks
   for both characters, attacking, during a sweep, with no unported object types.
+- Port, the cave, swamp and mushroom creatures (notes, "Platforms that block" and "More
+  creatures"): MAINTAINBLOCK in `src/rxplat.c`, now called by every solid object that uses it
+  (falling bricks, square platforms, boulders, the goblin boss's platform, spiked walls in
+  SPIKECHECK); in `src/rxplat.c` DOSQUAREPLAT, DOFALLINGPLAT (bricks and crushers), BRIKSHAKE,
+  DOCONTAINERBOMB (statue bombs), SWAMPRAFT, FROGPLAT; `src/rxcastle.c` BOMBEXPLODER; in
+  `src/rxcave.c` DODROP; in `src/rxforest.c` FDOCATSKELETON; in `src/rxswamp.c` FDOMOSQUITO,
+  FDOFROG, FFROGLAUNCH, FROGJUMP, FROGLAND and GRABSTUFF's frog spawner (tile type 0x69), with
+  GENERICBEGINFALL moving a leaping frog from the foreground list to the main list;
+  `src/rxmush.c` DOSPOREHOLE, DOSPORE; in `src/rxgoblin.c` DOROCKMONSTER, ROCKMONSTERFALL,
+  ROCKMONSTERHIT. SETUPOBJ gained types 0x3a (a split rock monster), 0x3e (frog), 0x48 (spore)
+  and 0x5b (the raft's front). Verified headless: a square platform goes round its 64-pixel
+  square every 4096 ticks; a brick shakes, falls on the player (who crouches, then is crushed)
+  and sets into the floor; the cat skeleton walks the slopes and hurts; drips fall; the giant
+  frog platforms surface and leap about 100 pixels; mosquitoes flit round the player; frogs
+  leap out of the swamp and sit on land; the raft carries the player right at 36 px/s and stops
+  at its landing (x 0x344); spore holes spit spores that hurt; a rock monster rolls at 31 px/s,
+  sheds 6 pieces a crack of the whip and (tested with its damage preset to 38) splits into two
+  medium ones; a statue bomb touched by the player bursts into 9 puffs and three flaming blobs.
+  All 29 levels run 20,000 ticks for both characters, attacking, during a sweep.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -177,18 +196,17 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **More behaviours** (next), a module at a time; a `--sweep` run lists the animators a level
    reaches that aren't ported (it needs `--screenshot`, or it opens a window). What a sweep of
-   every level still reaches: DOAMBIENTNOISE (every level; sound only), the cave platforms
-   DOFALLINGPLAT / DOSQUAREPLAT (21, 26), DOCONTAINERBOMB (23, 26), DOMOSQUITO and SWAMPRAFT
-   (8, 9), DOSPOREHOLE (12, 26), DOBOMBGUARD (5, 6), FROGPLAT / DOCATSKELETON / DODROP (3),
-   DOROCKMONSTER (14), DOWISP (18), DOCHAIN / DOCHAINEND (23), DOBACKSTARS (6), and the
-   bosses and their cameras: ROSSWAIT (7), DODRAGONBOB / DRAGONCENTER (10), CRUSHERCENTER
-   (15), BOSSCENTER (16), DEMONWAIT / DEMONCENTER (25). The skeletons (SKEL*, DOSKELHEAD) in
-   RXSKELF.C are spawned, not placed. `tools/animators.py` maps object types to animators.
-   Left over from the damage milestone: the special item (key 6, spawn type 0x37 /
-   DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
-   for a weapon upgrade, which is applied without it), MAINTAINBLOCK (spiked walls block),
-   GRABSTUFF's spawners (bolo cats 0x68, frogs 0x69, goblin2's snake platform), the cat
-   skeleton's bones in ENEMYHIT, the bosses' deaths, PROCESSLEVEL's looking up / down, XLEVEL
+   every level still reaches: DOAMBIENTNOISE (every level; sound only); the castle creatures
+   in RXCASTLE.C, DOBOMBGUARD (5, 6; it throws DOBOMB) and DOKNIFEGUARD, DOBACKSTARS (6);
+   DOWISP (18); DOCHAIN / DOCHAINEND (21, 23); and the bosses and their cameras: ROSSWAIT (7),
+   DODRAGONBOB / DRAGONCENTER (10), CRUSHERCENTER (15), BOSSCENTER (16), DEMONWAIT /
+   DEMONCENTER (25). The skeletons (SKEL*, DOSKELHEAD) in RXSKELF.C are spawned, not placed;
+   DOTORCH (type 0x2c) isn't placed by INITOBJ either. `tools/animators.py` maps object types
+   to animators. Left over from the damage milestone: the special item (key 6, spawn type 0x37
+   / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
+   for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats
+   0x68 via FINDBOLOPOS, goblin2's snake platform), the cat skeleton's bones in ENEMYHIT, the
+   rafts' parent lists (PARENTLISTADD), the bosses' deaths, PROCESSLEVEL's looking up / down, XLEVEL
    (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:
    `http://127.0.0.1:8080/decompile?name=DOTRANSFORMER`.
 2. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame

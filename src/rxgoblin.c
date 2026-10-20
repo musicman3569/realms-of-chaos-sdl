@@ -1,4 +1,4 @@
-/* RXGOBLIN.C: the goblins (fist or club) of the goblin levels. */
+/* RXGOBLIN.C: the goblins (fist or club) and the rock monsters of the goblin levels. */
 #include "behave.h"
 
 /* GenericVar[1]: 0 a goblin with fists (GobFistID), 1 with a club (GobClubID, levels 14 on). */
@@ -200,4 +200,133 @@ void goblin_jump(obj_t *o)
         }
     }
     o->counter = 0;
+}
+
+/* RXGOBLIN.C:87 ROCKMONSTERHIT: each hit costs a rock monster one more point (40, 32 or 24
+ * by size: GenericVar[0] 0 big, 1 medium, 2 small) and chips rock off it (type 0x38: 2
+ * pieces, 6 against the male's whip; bigger monsters shed smaller pieces). When it breaks,
+ * a big one splits into two medium ones (RockMon2ID) and a medium one into two faster
+ * small ones (RockMon3ID), in a shower of 9 pieces; a small one just crumbles. */
+static void rock_monster_hit(obj_t *o)
+{
+    obj_t *you = G.you;
+    const int16_t size = o->gv[0];
+    if (++o->gv[3] < 0x28 - size * 8) {
+        o->flags &= 0xFD;
+        o->old_animator = o->animator;
+        o->animator = A_ENEMYHITPAUSE;
+        G.hit_release = 0;
+        play_sample(0x83, NULL);
+        for (uint8_t i = 0; i < ((G.game_flags & 4) ? 6 : 2); i++) {
+            const uint8_t r = (uint8_t)frandom(size == 0 ? 10 : size == 1 ? 9 : 5);
+            const int piece = r < 5 ? 3 : r < 7 ? 2 : r < 9 ? 1 : 0;
+            const uint16_t x = (uint16_t)(o->x + frandom((uint16_t)(o->xsize - (o->xsize >> 1))));
+            const uint16_t y = (uint16_t)(o->y + frandom((uint16_t)(o->ysize >> 1)));
+            obj_t *p = spawn_obj(0x38, LIST_MAIN, G.img[IMG_ROCKPIEC + piece], x, y);
+            if (you && o->x < you->x)
+                p->flags &= 0xFFFE;
+            else
+                p->flags |= 1;
+        }
+        return;
+    }
+    play_sample(0x84, NULL);
+    G.enemy_found++;
+    if (size == 0) {
+        G.enemy_in_level += 2;
+        spawn_obj(0x3A, LIST_MAIN, G.img[IMG_ROCKMON2], (uint16_t)(o->x + 5), o->y)->xdir = 0;
+        spawn_obj(0x3A, LIST_MAIN, G.img[IMG_ROCKMON2], (uint16_t)(o->x + 5),
+                  (uint16_t)(o->y + 0x28))->xdir = 1;
+    } else if (size == 1) {
+        G.enemy_in_level += 2;
+        for (int i = 0; i < 2; i++) {
+            obj_t *m = spawn_obj(0x3A, LIST_MAIN, G.img[IMG_ROCKMON3], (uint16_t)(o->x + 7),
+                                 (uint16_t)(o->y + (i ? 0x14 : 0)));
+            m->xdir = i ? 0 : 1;
+            m->xspeed = (int16_t)(m->xspeed + 2000);
+            m->gv[0] = 2;
+            m->frame_count_max = 3;
+        }
+    }
+    for (uint8_t i = 0; i < 9; i++) {
+        const uint8_t r = size == 0 ? (uint8_t)frandom(5) : size == 1 ? (uint8_t)frandom(4) : 4;
+        const int piece = r < 2 ? 2 : r < 4 ? 1 : size == 2 ? 3 : 0;
+        const uint16_t x = (uint16_t)(o->x + frandom((uint16_t)(o->xsize - (o->xsize >> 1))));
+        const uint16_t y = (uint16_t)(o->y + frandom((uint16_t)(o->ysize >> 1)));
+        obj_t *p = spawn_obj(0x38, LIST_MAIN, G.img[IMG_ROCKPIEC + piece], x, y);
+        if (frandom(2) == 0)
+            p->flags |= 1;
+        else
+            p->flags &= 0xFFFE;
+    }
+    obj_kill(o);
+}
+
+/* RXGOBLIN.C:13 DOROCKMONSTER: a rock monster (OF_RATE, xSpeed 0xdac: about 31 steps a
+ * second) rolling along, following slopes. It turns at walls, ledges, a ceiling it can't
+ * climb past and, after 0x640 ticks, once it has passed the player. The big one rumbles. */
+int do_rock_monster(obj_t *o)
+{
+    obj_t *you = G.you;
+    bool turn = false;
+    can_move(o);
+    if (o->down_offset > 10)
+        o->y++;
+    if (o->up_offset > 10) {
+        if (!can_go_up(o))
+            turn = true;
+        else
+            o->y--;
+    }
+    if (o->gv[0] == 0) {
+        next_frame(o, IMG_ROCKMON1);
+        if ((o->frame_no == 1 || o->frame_no == 4) && o->frame_count == o->frame_count_max)
+            play_sample(0x73, o);
+    } else {
+        next_frame(o, o->gv[0] == 1 ? IMG_ROCKMON2 : IMG_ROCKMON3);
+    }
+    if (o->xdir == 0) {
+        o->x--;
+        if (o->counter > 0x640 && you && o->x < you->x)
+            turn = true;
+    } else {
+        o->x++;
+        if (o->counter > 0x640 && you && you->x < o->x)
+            turn = true;
+    }
+    const bool way = o->xdir == 0 ? can_go_left(o) && room_left(o)
+                                  : can_go_right(o) && room_right(o);
+    if (!way || o->down_offset == 1 || turn) {
+        o->counter = 0;
+        o->frame_count = 1;
+        if (o->xdir == 0) {
+            o->xdir = 1;
+            o->x = (uint16_t)(o->x + 2);
+        } else {
+            o->xdir = 0;
+            o->x = (uint16_t)(o->x - 2);
+        }
+    }
+    hit_player(o);
+    if (o->flags & OF_HIT)
+        rock_monster_hit(o);
+    return 0;
+}
+
+/* RXGOBLIN.C:69 ROCKMONSTERFALL: GENERICFALL calls it for rock monsters (priority 0x31): in
+ * the air it keeps rolling sideways at its speed, bouncing off walls. */
+void rock_monster_fall(obj_t *o)
+{
+    if (!carry(&o->xpart, o->xspeed))
+        return;
+    if (o->xdir == 0) {
+        if (can_go_left(o))
+            o->x--;
+        else
+            o->xdir = 1;
+    } else if (can_go_right(o)) {
+        o->x++;
+    } else {
+        o->xdir = 0;
+    }
 }

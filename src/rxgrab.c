@@ -32,7 +32,7 @@ static void take_gem(unsigned row, unsigned col, bool in_bonus, uint8_t sample, 
  *   0x73  a rare noise         0x6d  a spike to be impaled on
  *   0x65  water or a pit       0x67  the level's exit (_quitflag 3)
  *   0x70  back to the start    0x75 / 0x6e  spikes (0x6e with blood)
- *   0x68 / 0x69  spawn bolo-throwing cats / frogs (not ported yet). */
+ *   0x68 / 0x69  spawn bolo-throwing cats (not ported yet) / frogs. */
 void grab_stuff(unsigned row, unsigned col)
 {
     obj_t *you = G.you;
@@ -106,8 +106,29 @@ void grab_stuff(unsigned row, unsigned col)
         return; /* a cat drops in throwing bolos (BOLOCATFALL): not ported yet */
     if (fg == 0x19 && G.level == 0x18 && (you->gv[5] & 1))
         return; /* goblin2's snake platform (DOSNAKEPLAT): not ported yet */
-    if (bon == 0x69 && G.monster_number < G.max_monster_number && G.monster_counter == 0)
-        return; /* a frog leaps out (DOFROG): not ported yet */
+    if (bon == 0x69 && G.monster_number < G.max_monster_number && G.monster_counter == 0) {
+        /* A frog leaps out of the water 50-150 pixels to one side of the player, in front of
+         * the water (the foreground list; GENERICBEGINFALL moves it to the main list), facing
+         * the player. The tile stops spawning after three frogs (at once on the easy
+         * difficulties). */
+        const uint16_t r = frandom(100);
+        const uint16_t x = frandom(2) == 0 ? (uint16_t)(you->x - r - 0x32)
+                                           : (uint16_t)(r + you->x + 0x41);
+        if (x < 0x15 || x >= (uint16_t)(G.lv->cols * 16 - 0x29))
+            return;
+        if (++G.monster_spawns > 2 || G.diff_mode < 2) {
+            G.monster_spawns = 0;
+            map_set_cell(row, col, cell & 0xDFFF);
+        }
+        G.monster_number++;
+        obj_t *f = spawn_obj(0x3E, LIST_FORE, G.img[IMG_FROG + 2], x, (uint16_t)(G.org_y + 0xB8));
+        f->xdir = you->x < x ? 0 : 1;
+        f->gv[1] = 1;
+        f->gv[2] = 0;
+        f->surface_flags |= 8;
+        G.enemy_in_level++;
+        return;
+    }
     if (G.quitflag == 0 && (bt == 0x70 || bon == 0x70)) {
         /* back to the level's start (with a message window, WINUP: not ported) */
         you->x = 0x33;

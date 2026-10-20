@@ -87,8 +87,8 @@ int do_container(obj_t *o)
 }
 
 /* The per-object part of GENERICFALL / GENERICUP, by priority. The two lists differ: only
- * falling has CATSKELETON (0x4e), DODROP (100) and ROCKMONSTERFALL (0x31), and 0xe7 does
- * nothing while falling; otherwise those go to DOPROJECTILE like any other priority. */
+ * falling has DOCATSKELETON (0x4e), DODROP (100) and ROCKMONSTERFALL (0x31), and 0xe7 does
+ * nothing while falling; rising, those go to DOPROJECTILE like any other priority. */
 static void own_behaviour(obj_t *o, bool falling)
 {
     switch (o->priority) {
@@ -107,12 +107,33 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x3E:
         do_boar_spear(o);
         return;
-    case 0x3A: case 0x3B: case 0x3C: case 0x35: case 0x39:
+    case 0x35:
+        frog_jump(o);
+        return;
+    case 0x39:
+        do_spore(o);
+        return;
+    case 0x3A: case 0x3B: case 0x3C:
     case 0x66: case 0x49: case 0x47: case 0x97: case 0x4A:
         return; /* DOBOMB, ROSSPIECE, ROSSJUMP, ...: not ported yet */
-    case 0x4E: case 100: case 0x31: case 0xE7:
+    case 0x4E:
+        if (!falling)
+            break;
+        do_cat_skeleton(o);
+        return;
+    case 100:
+        if (!falling)
+            break;
+        do_drop(o);
+        return;
+    case 0x31:
+        if (!falling)
+            break;
+        rock_monster_fall(o);
+        return;
+    case 0xE7:
         if (falling)
-            return; /* DOCATSKELETON, DODROP, ROCKMONSTERFALL: not ported yet */
+            return;
         break;
     default:
         break;
@@ -125,8 +146,33 @@ int generic_begin_fall(obj_t *o)
 {
     o->animator = A_GENERICFALL;
     o->gv[5] &= ~(4 | 8 | 1);
-    /* Priority 0x4a (the boss) and 0x35 (frogs in the foreground list) do more here; not
-     * ported yet. */
+    /* (The skeleton boss, priority 0x4a, also changes its image here: not ported yet.) */
+    if (o->priority == 0x35 && o->list == LIST_FORE) {
+        /* A frog leaping out of the water is drawn in front of it; coming down, it moves to
+         * the main list as a copy (type 0x3e), and the original goes. */
+        obj_t *c = spawn_obj(0x3E, LIST_MAIN, o->image, o->x, o->y);
+        c->animator = o->animator;
+        c->blinks = o->blinks;
+        c->draw_on = o->draw_on;
+        c->draw_off = o->draw_off;
+        c->blink_color = o->blink_color;
+        c->blink_ct = o->blink_ct;
+        c->flags = o->flags;
+        c->xdir = o->xdir;
+        c->xpart = o->xpart;
+        c->ypart = o->ypart;
+        c->xspeed = o->xspeed;
+        c->yspeed = o->yspeed;
+        c->counter = o->counter;
+        c->old_animator = o->old_animator;
+        c->down_offset = o->down_offset;
+        c->up_offset = o->up_offset;
+        for (int i = 0; i < 6; i++)
+            c->gv[i] = o->gv[i];
+        c->surface_flags = o->surface_flags;
+        G.monster_number++;
+        o->animator = A_OFFKILLER;
+    }
     return 0;
 }
 
@@ -151,7 +197,9 @@ static void generic_down(obj_t *o)
                 player_down(1, G.you);
             } else if (o->priority == 0x97) {
                 o->gv[5] |= 2;
-                maintain_platform(o); /* (and MAINTAINBLOCK, not ported) */
+                maintain_platform(o);
+                if (!(o->gv[5] & 0x20) && G.you && obj_overlap(G.you, o))
+                    maintain_block(o);
             } else {
                 o->y++;
             }
@@ -295,7 +343,9 @@ int generic_up(obj_t *o)
         player_up(1, G.you);
     } else if (o->priority == 0x97) {
         o->gv[5] |= 1;
-        maintain_platform(o); /* (and MAINTAINBLOCK, not ported) */
+        maintain_platform(o);
+        if (!(o->gv[5] & 0x20) && G.you && obj_overlap(G.you, o))
+            maintain_block(o);
     } else {
         o->y--;
     }

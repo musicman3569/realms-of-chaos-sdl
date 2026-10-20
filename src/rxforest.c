@@ -355,15 +355,16 @@ int wolf_run(obj_t *o)
 }
 
 /* RXFRSTF.C:759 SPIKECHECK: spikes (and stakes) hurt the player they touch, with blood. A
- * spiked wall (IsWall) only blocks a player walking or crawling into it (MAINTAINBLOCK, not
- * ported yet). */
+ * spiked wall (IsWall) only blocks a player walking or crawling into it (MAINTAINBLOCK). */
 void spike_check(obj_t *o, uint8_t is_wall)
 {
     obj_t *you = G.you;
     if (!you || !obj_collide(you, o))
         return;
-    if ((you->animator == A_YOURUN || you->animator == A_YOUCROUCH) && is_wall)
+    if ((you->animator == A_YOURUN || you->animator == A_YOUCROUCH) && is_wall) {
+        maintain_block(o);
         return;
+    }
     if (G.hitagain || (G.game_flags & 8) || G.you_invincible || you->animator == A_YOUDIE ||
         G.quitflag)
         return;
@@ -608,5 +609,43 @@ int do_cave_spider(obj_t *o)
     hit_player(o);
     if (o->flags & OF_HIT)
         enemy_hit(o, 2);
+    return 0;
+}
+
+/* RXFRSTF.C:493 FDOCATSKELETON (DOCATSKELETON calls it; GENERICFALL too while it falls): a
+ * skeleton cat walking a step at each carry of 0xdac, following slopes and turning at walls
+ * (and short of x 40). Off a ledge it falls (GENERICBEGINFALL) and lands walking again.
+ * Between steps it hurts; 12 damage points kill it, and so does falling to the bottom of the
+ * map. */
+int do_cat_skeleton(obj_t *o)
+{
+    if (carry(&o->xpart, 0x0DAC)) {
+        next_frame(o, IMG_SKELCAT);
+        if (o->xdir == 0) {
+            if (!can_go_left(o) || o->x < 0x28)
+                o->xdir = 1;
+            else
+                o->x--;
+        } else if (!can_go_right(o)) {
+            o->xdir = 0;
+        } else {
+            o->x++;
+        }
+        can_move(o);
+        if (o->up_offset > 10)
+            o->y = (uint16_t)(o->y - (o->up_offset - 10));
+        else if (o->down_offset > 10)
+            o->y = (uint16_t)(o->y + (o->down_offset - 10));
+        else if (o->down_offset == 1)
+            o->animator = A_GENERICBEGINFALL;
+        return 0;
+    }
+    hit_player(o);
+    if (o->flags & OF_HIT) {
+        play_sample(0x82, NULL);
+        enemy_hit(o, 12);
+    }
+    if ((uint16_t)(o->y + o->ysize) > (uint16_t)(G.lv->rows * 16 - 0x21))
+        enemy_hit(o, 0);
     return 0;
 }

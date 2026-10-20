@@ -446,6 +446,50 @@ DOPROJECTILE moves left only when both bit 0 and `xDir` are clear).
   which SETUPOBJ sends to case 0: a GENERICBEGINJUMP with random speeds); 10 points kill (60 for
   the lava men).
 
+**Platforms that block** (RXPLAT.C:925 MAINTAINBLOCK). Solid objects call it when they
+overlap the player and aren't being ridden: falling bricks, square platforms, boulders, the
+goblin boss's platform (FLOATINGPLATFORM when it's `_Boss`) and spiked walls (SPIKECHECK, for a
+player walking or crawling into them). From below, a block stops a jump; the player drops a
+pixel if there's room, crouches if standing under a block that isn't moving sideways, and is
+otherwise crushed (YOUCRUSH). From the side it pushes the player a pixel (following slopes),
+and crushes a player against a wall if it's moving that way (always on levels 16 and 25). It
+checks `HitPoints[0]`, the female's hit points, whichever character is playing.
+
+**More creatures.**
+
+- **Falling bricks and crushers** (DOFALLINGPLAT): Flags bit 0 means falling. A brick (under
+  18 pixels high) shakes (BRIKSHAKE) while the player is near and falls when the player is
+  right under it; after a bounce it becomes part of the map, setting the floor and wall bits
+  (0x800, 0x200 / 0x400) of its two cells. A crusher (a cave block whose info isn't "s..")
+  rises back 500 ticks after each landing and falls again. Square platforms ("s<side>[r]")
+  go round a 64-pixel square, a pixel every 16 ticks.
+- **Statue bombs** (info "b", DOCONTAINERBOMB) go off when the player, a flame puff or a spore
+  touches them, or when hit. BOMBEXPLODER (RXCASTLE.C) is the castle's bomb explosion: 9
+  DOTORCHPUFFs; the three blobs thrown with it are type 0x48, the same as spores.
+- **The raft** (SWAMPRAFT) keeps its front piece (type 0x5b, drawn over the player) in
+  GenericVar[0] as a near pointer; the port keeps it in a `child` field.
+- **Frogs.** GRABSTUFF's tile type 0x69 spawns a frog (type 0x3e) in the foreground list
+  50-150 pixels to one side of the player, at the bottom of the view; FROGLAUNCH makes it leap
+  (ySpeed -20000). When it starts falling, GENERICBEGINFALL makes a copy in the main list (so
+  it's drawn behind the water's foreground tiles again) and gives the original OFFKILLER. It
+  lands on land (DOFROG: croaks and hops) or in the water (a splash, and it goes). DS:38da
+  counts the spawns from a tile: the third (or the first on the easy difficulties) clears the
+  tile's 0x2000 bit. The giant cave frogs are platforms (FROGPLAT).
+- **Mosquitoes** (DOMOSQUITO) fly arcs from a 21-byte step table at DS:0cfe
+  (5,3,2,2,1,2,1,0,1,1,0,1,0,1,0,0,1,0,0,0,0), forwards or backwards, and sometimes dive at
+  the player along a line stored as sixteenths of the distance. They keep their buzz's sound
+  handle in FrameCountMax.
+- **Spores** (DOSPOREHOLE, DOSPORE, RXMUSH.C): a hole cycles through 14 runs, spitting a spore
+  at the third. Spores burst on walls, on the player, or on landing.
+- **Rock monsters** (RXGOBLIN.C) come in three sizes (GenericVar[0] 0-2, RockMon1-3ID) that
+  take 40, 32 and 24 damage points. A big one breaks into two medium ones, and a medium one
+  into two small ones (type 0x3a, GENERICBEGINFALL with ROCKMONSTERFALL rolling them in the
+  air); a small one crumbles. Every hit chips off rock pieces (type 0x38, RockPiecID). The
+  `FRANDOM` ranges in ROCKMONSTERHIT are lost in the decompile and had to be read from the
+  machine code.
+- **Drips** (DODROP): an invisible tap drops water (1 in 4000 a tick); the cat skeleton
+  (DOCATSKELETON) walks and falls off ledges like the other walkers.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a
