@@ -113,7 +113,7 @@ static void generic_down(obj_t *o)
         can_move(o);
         if (o->down_offset == 1 && o->up_offset < 10) {
             if (o->priority == 0xE6) {
-                player_down(1);
+                player_down(1, G.you);
             } else if (o->priority == 0x97) {
                 o->gv[5] |= 2;
                 maintain_platform(o); /* (and MAINTAINBLOCK, not ported) */
@@ -203,8 +203,10 @@ int generic_begin_jump(obj_t *o)
     } else if (o->priority == 0xE6) {
         /* The player: SETSCROLLBOUNDS (not ported), and from a crouch stand up first unless
          * there's a ceiling. */
-        if (G.center_off >= 0)
+        if (G.center_off >= 0) {
+            set_scroll_bounds(0x8C, G.window_xsize);
             G.center_off = 0;
+        }
         if (o->ysize == 0x19) {
             const unsigned row = (unsigned)(G.you->y - 0x10) >> 4;
             if ((map_cell(row, G.you->x >> 4) & 0x1000) ||
@@ -255,7 +257,7 @@ int generic_up(obj_t *o)
         return generic_begin_fall(o);
     }
     if (o->priority == 0xE6) {
-        player_up(1);
+        player_up(1, G.you);
     } else if (o->priority == 0x97) {
         o->gv[5] |= 1;
         maintain_platform(o); /* (and MAINTAINBLOCK, not ported) */

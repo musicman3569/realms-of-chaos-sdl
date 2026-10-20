@@ -35,20 +35,22 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 ## Running
 
 ```
-build/roc.exe game/ROC.EXE                          # run level 0
-build/roc.exe game/ROC.EXE --level 5 --pos 400,64   # level 5, free camera at map pixel 400,64
-build/roc.exe game/ROC.EXE --level 5 --no-objects   # the map without its objects
-# headless: run 1800 ticks (about 3 s) with the camera and the player placed, save one view
+build/roc.exe game/ROC.EXE                          # play level 0
+build/roc.exe game/ROC.EXE --level 5                # play level 5
+# headless: 1800 ticks (about 3 s) with the camera fixed and the player placed; save the view
 build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800 --screenshot out.png
+# headless with scripted keys: walk right, jump at ticks 1000-1100
+build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold right:0-3000,jump:1000-1100 --screenshot out.png
 # headless test: move the player across the whole map; list every object at the end
 build/roc.exe game/ROC.EXE --level 1 --ticks 40000 --sweep --list --screenshot out.png
 ```
 
-`ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. The
-player's behaviour isn't ported, so the arrow keys move the player freely (Shift faster) and
-the view follows; C toggles a free camera, PgUp / PgDn change level, O toggles the objects,
-Space pauses, F12 saves `shotNNN.png`, Esc quits. Objects whose behaviour isn't ported stay
-still, and each such animator is reported once on stderr.
+`ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
+arrows, Ctrl jump, Alt attack (not ported yet), Enter + up / down look. Viewer keys: [ and ]
+change level, C free camera (the arrows move the view), O hides the objects, P pauses, F12
+saves `shotNNN.png`, Esc quits. Falling into a pit restarts the level (until death is
+ported). Objects whose behaviour isn't ported stay still, and each such animator is reported
+once on stderr. Headless runs print the player's position and animator at the end.
 
 ## Completed
 
@@ -90,6 +92,17 @@ still, and each such animator is reported once on stderr.
   wolves run and turn; stakes cycle; floating platforms travel their 112 px and carry the
   player; the player rides a pulley platform its 144 steps; a crumbling platform shakes,
   falls and breaks up. A `--sweep` of all 29 levels runs without errors.
+- Port, the player (`src/rxyou.c`, notes "The player"): standing, walking (following
+  slopes), the idle animations, jumping (held for height), falling, the stun after a long
+  fall, crouching and crawling, climbing vines and ropes, scrambling over vine tops; keyboard
+  input through `_Keys` / `_KeyTrans`; the real PLAYER* moves and scrolling (dead zone,
+  SCROLL*, the SCREENCENTER camera object), with the starting view as NEWLEVEL sets it.
+  Verified headless with `--hold`: walking at 106 px/s over slopes with the view scrolling,
+  a jump of 50 pixels, crouch / crawl / stand, a 179-pixel fall ending in a 180-tick stun,
+  climbing a castle rope (44 px/s), climbing to a vine top in dead2 and standing on the
+  ledge, riding a pulley platform. Not yet: attacking (whip / fireballs), the special item,
+  damage and death (HITPLAYER, YOUHIT, YOUDIE...), GRABSTUFF (gems, secrets, the level exit,
+  hazards), looking up / down.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -97,11 +110,13 @@ still, and each such animator is reported once on stderr.
 
 ## Next steps
 
-1. **The player** (next): RXYOU.C, RXYOUF.C (YOUBEGINRUN and the YOU* states the platforms
-   already switch to: YOUBEGINFALL, YOUCROUCH, YOUCRUSH...), keyboard input (KBD3.C), the
-   real MOVE.C player moves (grabbing 0x2000 tiles via GRABSTUFF, scrolling: SCROLLRIGHT...
-   in 3cb4, SETSCROLLBOUNDS, `PROCESSLEVEL`), and damage (HITPLAYER, SPIKECHECK, ENEMYHIT,
-   the whip / weapons). This replaces the viewer's free-flying player and centred camera.
+1. **Grabbing, damage and attacks** (next): GRABSTUFF (gems, secrets, level exit, hazards,
+   warps; the tile types in notes "Grabbing"), HITPLAYER / SPIKECHECK / YOUHIT / YOUDIE /
+   YOUCRUSH (and the inventory's hit points, blinking), the attacks (FYOUBEGINWHIP / WHIP /
+   WHIPPINGFRAME and DOWHIP for the male, FYOUBEGINSHOOT / SHOOT and DOFIREBALL for the
+   female) and ENEMYHIT, so enemies can be fought; then PROCESSLEVEL's looking and the status
+   display. The decompiles are easiest to read from GhidraMCP's HTTP backend:
+   `http://127.0.0.1:8080/decompile?name=FYOUWHIP`.
 2. **More behaviours**, a module at a time; a `--sweep` run lists the animators a level
    reaches that aren't ported. By how many levels need them: DOGARGOYLE (10), DOCAVEHOLE (5),
    GOBLINSTAND, DOBOAR, MUDMANWALK, DOCAVESPIDER, DOCAVEFALLSPIKES, then the rest.

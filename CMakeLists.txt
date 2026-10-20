@@ -18,6 +18,7 @@ add_executable(roc
     src/rxforest.c
     src/rxplat.c
     src/rxcave.c
+    src/rxyou.c
     src/png.c
 )
 

@@ -55,6 +55,33 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[4] = 0xBE;
         o->gv[5] = 0x0F;
         break;
+    case 0x08: /* the camera (SCREENCENTER; some levels have their own) */
+        o->flags |= OF_RATE;
+        o->animator = A_SCREENCENTER;
+        o->priority = 1;
+        o->update = 0x1000;
+        o->xspeed = 0x4000;
+        o->counter = 0;
+        if (lv == 0x0F) {
+            o->xdir = 0;
+            o->animator = 0x74C8; /* CRUSHERCENTER */
+            o->gv[0] = 1;
+            G.window_xsize = 0x140;
+            o->flags &= 0xBF;
+        } else if (lv == 0x0A) {
+            o->animator = 0xB0DF; /* DRAGONCENTER */
+            o->gv[0] = 0;
+        } else if (lv == 0x10) {
+            o->animator = 0x685D; /* BOSSCENTER */
+            o->gv[0] = 0;
+            o->flags &= 0xBF;
+            o->gv[5] &= 0xFFFE;
+        } else if (lv == 0x19) {
+            o->flags &= 0xBF;
+            o->xspeed = 22000;
+            o->animator = 0x15C7; /* DEMONCENTER */
+        }
+        break;
     case 0x0B: /* arrow sign */
         o->animator = A_DOARROWSIGN;
         o->priority = 0x0B;
@@ -474,6 +501,13 @@ void setup_obj(obj_t *o, uint8_t type)
         o->counter = 0;
         o->gv[0] = o->gv[1] = o->gv[2] = 0;
         o->xdir = lv == 0x13 ? 1 : 0;
+        break;
+    case 0x5C: /* ambient sounds */
+        o->animator = A_DOAMBIENTNOISE;
+        o->priority = 0x4D;
+        o->gv[2] = o->gv[1] = o->gv[0] = 0;
+        o->flags |= OF_RATE;
+        o->xspeed = 0x2000;
         break;
     case 0x5D: /* bird dropping */
         o->gv[0] = 5;

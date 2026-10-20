@@ -271,6 +271,46 @@ counts `GenericVar[4]` down and keeps `ySpeed` constant (it subtracts 0xb4 that 
 back); then GENERICUP decelerates. Moving up with a negative speed, the step is when
 `yPart += ySpeed` doesn't carry.
 
+## The player (RXYOU.C, RXYOUF.C)
+
+Each `YOU*` animator (YOURUN at 1000:b5ec...) just calls its `FYOU*` worker in RXYOUF.C. The
+states: BEGINRUN / RUN (on the ground; FYOUHORIZ does the walking), BEGINJUMP / JUMP / UP,
+BEGINFALL / FALL, BEGINCROUCH / CROUCH (also the stun after a long fall: BEGINSTUN),
+BEGINCLIMB / CLIMB / CLIMBMOVE (vines and ropes), BEGINSCRAMBLE / SCRAMBLE (over the top of a
+vine), plus SHOOT (the female character's fireballs), WHIP (the male's), HIT, DIE, CRUSH,
+IMPALE, DROWN. Numbers worth knowing: walking `xSpeed` 12000 (106 px/s), crawling 5000; the
+jump starts at `ySpeed` -16000 and keeps it while the key is held for 0xa0 (male) / 0xc3
+(female) ticks; gravity 0xb4 a tick; a fall of 0x97 / 0x74 pixels or more stuns for 180 / 240
+ticks. Climbing speed -0x13aa / -0xfaa up, 8000 down.
+
+- `GenericVar[5]` of the player: 1 on the ground, 2 falling, 4 jumping, 8 the jump key was
+  released (holding it doesn't jump again), 0x10 has the special item.
+- `_GameFlags`: 1 climbing, 2 attacking, 4 the male character, 8 recovering from a hit.
+- Vines are tile types 0x6a (climbable), 0x6b (the top: scramble onto the ledge) and 0x6c
+  (the bottom: let go). `_Vine_x` / `_Vine_y` hold the cell.
+- Idle: `Counter` counts ticks standing; FYOUBOREDOM shows a sequence of fidgets from it.
+  Moving sets it to 40000, which gives a short "stopping" animation first.
+
+**Keys.** `_Keys[128]` is set by the keyboard interrupt (KBD_Int) by PC scancode;
+`_KeyTrans[8]` (DS:1c34) maps the actions: left 0x4b, right 0x4d, up 0x48, down 0x50, jump
+0x1d (Ctrl), attack 0x38 (Alt), special item 0x39 (Space), look 0x1c (Enter).
+
+**Scrolling.** `SETSCROLLBOUNDS(h, w)` centres a w x h dead zone in the view;
+PLAYERLEFT / RIGHT / UP / DOWN (MOVE.C) move the player and scroll the view by the same
+amount when the player leaves it (SCROLLRIGHT... in 3cb4, clamped to the map). A level
+starts with the view at (player x - 0x8c, y - 0x4c), a 42 x 50 dead zone and `_CenterOff`
+86 (NEWLEVEL). Jumping and falling widen the zone to 140 high. The camera object (type 8,
+SCREENCENTER, spawned by INITLEVEL) then scrolls a pixel at a time, about 145 a second,
+until the player is between 0x4b and `_CenterOff` pixels from the top (86 standing, 102
+crouching), and back to the 50-high zone. Some levels have their own camera
+(CRUSHERCENTER, DRAGONCENTER, BOSSCENTER, DEMONCENTER). PROCESSLEVEL scrolls up / down while
+the look key is held with up / down (or PgUp / PgDn).
+
+**Grabbing.** After each player move, MOVE.C calls `_Grabber` (GRABSTUFF) for every cell
+entered that has bit 0x2000. GRABSTUFF acts on the cell's tile type: 0x74 secret, 0x71 a
+gem, 0x67 the level exit (`_quitflag` 3), 0x65 a hazard, and 0x6d, 0x68, 0x69, 0x70, 0x72,
+0x73 (not decoded yet). Pits have bit 0x4000 in their bottom rows, with 0x2000 in the last.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

@@ -59,4 +59,23 @@ void maintain_platform(obj_t *o);
 /* rxcave.c */
 int do_cave_spikes(obj_t *o);
 
+/* rxyou.c */
+int you_begin_run(obj_t *o);
+int you_run(obj_t *o);
+int you_begin_jump(obj_t *o);
+int you_jump(obj_t *o);
+int you_up(obj_t *o);
+int you_begin_fall(obj_t *o);
+int you_fall(obj_t *o);
+int you_horiz(obj_t *o);
+int you_begin_crouch(obj_t *o);
+int you_begin_stun(obj_t *o);
+int you_crouch(obj_t *o);
+int you_begin_climb(obj_t *o);
+int you_climb(obj_t *o);
+int you_climb_move(obj_t *o);
+int you_begin_scramble(obj_t *o);
+int you_scramble(obj_t *o);
+int screen_center(obj_t *o);
+
 #endif

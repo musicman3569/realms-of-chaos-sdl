@@ -30,24 +30,24 @@ void maintain_platform(obj_t *o)
                     }
                 }
             } else {
-                player_up(1);
+                player_up(1, you);
             }
         }
     }
     if (o->gv[5] & MOVE_DOWN) {
         o->y++;
         if ((o->gv[5] & RIDER) && you && can_go_down(you))
-            player_down(1);
+            player_down(1, you);
     }
     if (o->gv[5] & MOVE_LEFT) {
         o->x--;
         if ((o->gv[5] & RIDER) && you && can_go_left(you))
-            player_left(1);
+            player_left(1, you);
     }
     if (o->gv[5] & MOVE_RIGHT) {
         o->x++;
         if ((o->gv[5] & RIDER) && you && can_go_right(you))
-            player_right(1);
+            player_right(1, you);
     }
     if (!you)
         return;

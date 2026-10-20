@@ -214,7 +214,7 @@ uint16_t map_cell(unsigned row, unsigned col)
     return i < (unsigned)(G.lv->rows * G.lv->cols) ? G.lv->bg[i] : 0;
 }
 
-static uint8_t fg_cell(unsigned row, unsigned col)
+uint8_t map_fg(unsigned row, unsigned col)
 {
     const unsigned i = (uint16_t)(row * G.lv->cols + col);
     return i < (unsigned)(G.lv->rows * G.lv->cols) ? G.lv->fg[i] : 0;
@@ -231,28 +231,102 @@ bool obj_overlap(const obj_t *a, const obj_t *b)
            a->y < (uint16_t)(b->y + b->ysize - 1) && b->y < (uint16_t)(a->y + a->ysize - 1);
 }
 
-void player_up(uint8_t n)
+static int span(uint16_t from, uint16_t size);
+
+/* FUN_3c7c_0060: the cells in pixel column px along the object's height. */
+static void grab_column(uint16_t px, const obj_t *o)
 {
-    if (G.you)
-        G.you->y = (uint16_t)(G.you->y - n);
+    const unsigned r0 = o->y >> 4;
+    for (int k = 0, n = span(o->y, o->ysize); k < n; k++)
+        if (map_cell(r0 + k, px >> 4) & 0x2000)
+            grab_stuff(r0 + k, px >> 4);
 }
 
-void player_down(uint8_t n)
+/* FUN_3c7c_0002: the cells in pixel row py along the object's width. */
+static void grab_row(uint16_t py, const obj_t *o)
 {
-    if (G.you)
-        G.you->y = (uint16_t)(G.you->y + n);
+    const unsigned c0 = o->x >> 4;
+    for (int k = 0, n = span(o->x, o->xsize); k < n; k++)
+        if (map_cell(py >> 4, c0 + k) & 0x2000)
+            grab_stuff(py >> 4, c0 + k);
 }
 
-void player_left(uint8_t n)
+void player_right(uint8_t n, obj_t *o)
 {
-    if (G.you)
-        G.you->x = (uint16_t)(G.you->x - n);
+    o->x = (uint16_t)(o->x + n);
+    const uint16_t edge = (uint16_t)(o->x + o->xsize - 1);
+    grab_column(edge, o);
+    if ((uint16_t)(G.org_x + G.scroll_right) <= edge)
+        scroll_right(n);
 }
 
-void player_right(uint8_t n)
+void player_left(uint8_t n, obj_t *o)
 {
-    if (G.you)
-        G.you->x = (uint16_t)(G.you->x + n);
+    o->x = (uint16_t)(o->x - n);
+    grab_column(o->x, o);
+    if (o->x <= (uint16_t)(G.org_x + G.scroll_left))
+        scroll_left(n);
+}
+
+void player_up(uint8_t n, obj_t *o)
+{
+    for (int i = 0; i < n; i++) {
+        o->y--;
+        grab_row(o->y, o);
+        if (o->y <= (uint16_t)(G.org_y + G.scroll_upper))
+            scroll_up(1);
+    }
+}
+
+void player_down(uint8_t n, obj_t *o)
+{
+    for (int i = 0; i < n; i++) {
+        o->y++;
+        const uint16_t foot = (uint16_t)(o->y + o->ysize - 1);
+        grab_row(foot, o);
+        if ((uint16_t)(G.org_y + G.scroll_lower) <= foot)
+            scroll_down(1);
+    }
+}
+
+void set_scroll_bounds(uint16_t h, uint16_t w)
+{
+    G.scroll_left = (uint16_t)(320 - w) >> 1;
+    G.scroll_right = (uint16_t)(320 - G.scroll_left);
+    G.scroll_upper = (uint16_t)(200 - h) >> 1;
+    G.scroll_lower = (uint16_t)(200 - G.scroll_upper);
+}
+
+/* SCROLLRIGHT... (the originals also draw the newly exposed column / row into the Mode X
+ * pages; the port redraws the whole view each frame). */
+void scroll_right(uint8_t n)
+{
+    if (G.org_x < (uint16_t)(G.max_x - 320))
+        G.org_x = (uint16_t)(G.org_x + n);
+}
+
+void scroll_left(uint8_t n)
+{
+    if (G.org_x != 0)
+        G.org_x = (uint16_t)(G.org_x - n);
+}
+
+void scroll_up(uint8_t n)
+{
+    if (G.org_y != 0)
+        G.org_y = (uint16_t)(G.org_y - n);
+}
+
+void scroll_down(uint8_t n)
+{
+    if (G.org_y < (uint16_t)(G.max_y - 200))
+        G.org_y = (uint16_t)(G.org_y + n);
+}
+
+void grab_stuff(unsigned row, unsigned col)
+{
+    (void)row;
+    (void)col;
 }
 
 /* The cells an edge of the object spans; never 0 (the original would run 65536 times). */
@@ -306,6 +380,11 @@ bool can_go_right(const obj_t *o)
         if (bg_cell(r0 + k, edge >> 4) & 0x200)
             return false;
     return true;
+}
+
+static uint8_t fg_cell(unsigned row, unsigned col)
+{
+    return map_fg(row, col);
 }
 
 /* The tile type CANMOVE uses for a cell: the background tile's, or (below 200) the
@@ -499,6 +578,17 @@ bool game_start(const level_t *lv, const archive_t *arc, char *err, size_t errle
     G.seed = 1;
     G.diff_mode = 2;
     G.game_flags = 4; /* the male character, whose sprites mark the start in every level */
+    G.hit_points[0] = 4;
+    G.hit_points[1] = 6;
+    G.max_x = (uint16_t)(lv->cols * TILE);
+    G.max_y = (uint16_t)(lv->rows * TILE);
+    /* _KeyTrans as ROC.EXE has it (SETUP can change it in ROC.CFG): the arrow keys, Ctrl
+     * jump, Alt attack, Space the special item, Enter look. */
+    static const uint16_t keys[8] = {0x4B, 0x4D, 0x48, 0x50, 0x1D, 0x38, 0x39, 0x1C};
+    memcpy(G.key_trans, keys, sizeof keys);
+    /* NEWLEVELSETUP */
+    G.window_xsize = 0x2A;
+    G.center_off = 'V';
 
     /* LOADOBJ: load each named set into its _Img slots, then place the objects with a
      * position. The list holds frame 0's top left corner, 8 pixels low. */
@@ -529,7 +619,29 @@ bool game_start(const level_t *lv, const archive_t *arc, char *err, size_t errle
         if (y <= lv->rows * TILE - 1)
             init_obj(f0, x, y, e->info);
     }
+
+    /* INITLEVEL (the parts ported so far): the ambient sound and camera objects. */
+    if (G.level < 0x1B) {
+        spawn_obj(0x5C, LIST_FORE, NULL, 0, 0);
+        spawn_obj(0x08, LIST_FORE, NULL, 0, 0);
+    }
+    game_view_on_player();
     return true;
+}
+
+void game_view_on_player(void)
+{
+    /* NEWLEVEL: the view starts with the player 0x8c pixels from the left and 0x4c from the
+     * top, and a 42 x 50 dead zone. */
+    if (G.you) {
+        int x = G.you->x - 0x8C, y = G.you->y - 0x4C;
+        x = x < 0 ? 0 : x > G.max_x - 320 ? G.max_x - 320 : x;
+        y = y < 0 ? 0 : y > G.max_y - 200 ? G.max_y - 200 : y;
+        G.org_x = (uint16_t)x;
+        G.org_y = (uint16_t)y;
+    }
+    set_scroll_bounds(0x32, G.window_xsize);
+    G.window_ysize = 50;
 }
 
 void game_end(void)
