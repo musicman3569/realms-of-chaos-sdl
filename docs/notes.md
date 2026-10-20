@@ -57,7 +57,48 @@ doesn't wrap the 16-bit target offset, so the call target lands 64 KB away, in a
 segment. Two of them land in DGROUP, where analysis then made bogus functions (plus a
 `caseD_0` from a misread jump table) on top of real globals. The script removes
 analysis-made functions in DGROUP before typing the data. The 7 calls themselves still point
-at the wrong addresses in Ghidra.
+at the wrong addresses in Ghidra. Near jumps can wrap the same way; FixDisassembly follows them
+to the right place but leaves their references as they are.
+
+### Repairing the disassembly (`FixDisassembly.java`)
+
+Ghidra's MZ loader gives each module's code a segment, but for switch tables it reads the
+table and the case targets with the wrong segment base. Borland compiles a dense `switch` as
+`CMP BX,n / JBE / JMP default / SHL BX,1 / JMP word ptr CS:[BX+table]`, and the table holds
+offsets in the function's own segment. For SETUPOBJ (2a35:001f) Ghidra used `2000:xxxx`, so
+the 96 "cases" landed in other modules. It disassembled garbage there, and the garbage
+overlapped real instructions, so real code was cut off too. SETUPOBJ decompiled into calls to
+`DOSWRITE`, and GRABSTUFF lost most of its body to one stray target from SETUPHANDLES. Before
+the fix, 1,525 of the 12,919 source-line starts were not instruction starts. Some data items
+analysis had typed inside code had the same effect (OPTIONMENU).
+
+`tools/ghidra_scripts/FixDisassembly.java` repairs this. It takes the same
+`analysis/ROC.tdinfo.txt`:
+
+1. For the 17 switches of that shape it reads the table at `CS:table`, replaces the flow
+   references and writes a jump-table override. Every target lands on a source-line start.
+2. It walks the real code along fall-throughs and jumps, starting from what the debug info
+   vouches for: the 13,138 line starts, the case targets, then the named functions and last
+   the unnamed ones. Anything overlapping an instruction on that walk is cleared, including
+   data in code segments. It never clears code the walk has already reached, or the globals
+   in DGROUP (unless a line start says it's code). It also wraps near jump targets into the
+   jump's own segment (see the quirk below).
+3. It clears the garbage reachable only from the old switch targets, and recomputes every
+   function body.
+
+It also removes `line N` comments that aren't on a line start (an earlier ApplyTdInfo run had
+put about 20 of them a byte early), and it keeps all other comments. Run it after
+ApplyTdInfo; then run ApplyTdInfo and FixDisassembly once more. The second round picks up what
+the first repair uncovered: functions the garbage had hidden, functions auto-analysis made in
+DGROUP meanwhile (ApplyTdInfo removes them), and a 17th switch (`_MV_ErrorString`). After
+that, a run changes nothing. In the GUI project, 1 of the 13,138 line starts is still not code
+(headless tests left 28aa:00a5 in SAVEGAME and 2f81:0639 in WRITETEXT). The case labels in the decompiler are target addresses (`case 0x2a976:`), not
+case values; the index is the position in the table.
+
+The scripts can be tested without touching the open project: copy `ghidra/realms-of-chaos.gpr`
+and `.rep` to a scratch folder and run `support/analyzeHeadless.bat <copy> realms-of-chaos
+-process -noanalysis -postScript FixDisassembly.java analysis/ROC.tdinfo.txt` (with
+`JAVA_HOME` set to Ghidra's JDK).
 
 What the debug info doesn't cover: the ~90 runtime-library helpers without public names
 (they stay `FUN_…`), and register variables (SI/DI); those are listed in the plate comment.
@@ -126,3 +167,53 @@ Source modules (from the line-number table): the game is `RX*.C` plus `rocxms.as
 `HUF.C`/`DECODE.C`/`MAKETBL.C` look like the decompressor (probably for `ROC.DAT`); the sound
 library is `SOURCE\*.C` (`BLASTER.C`, `AL_MIDI.C`, `MULTIVOC.C`, `FX_MAN.C`, `TASK_MAN.C`…),
 which looks like the Apogee Sound System.
+
+## Level objects
+
+**Placing them** (`LOADOBJ`, `INITOBJ` in RXOBJF.C). The `.led` object list is a linked list
+of `SPRITE_LIST` (62 bytes: link, sprite pointer, `name[20]`, `info[32]`, `x`, `y`). LOADOBJ
+matches each name against a table of `IMAGEDATA` (9-character name + frame count) and loads
+`name.spr` into the matching slot of `_Img` (an `IMAGEstruct` of `SPRITE far*` arrays:
+`_Img.BatID`, `_Img.MalWalkID`...), once per set. Entries with `x == 0xFFFF` only load a
+set (fonts, the other player sprites, things spawned later). For the others:
+
+```
+x = list.x - frame0.ImgXoff
+y = list.y - frame0.ImgYoff - 8        (16-bit unsigned)
+if y <= Rows*16 - 1: INITOBJ(set, x, y, info)
+```
+
+So the list stores the top left corner of frame 0, 8 pixels low, and the object's x / y is its
+hotspot, in map pixels (tile row r is at y = r*16, the same coordinates as `_OrgX/_OrgY`).
+
+INITOBJ allocates the `OBJstruct` (48 bytes) and a `USERstruct` (27 bytes), then picks the
+behaviour by comparing the sprite set pointer with `_Img` slots: it puts an object type index
+in `UserPtr->FrameNo` (bat 0x1f, catwalk 0x22, catband/catmace 0x23, statue 0x15, leaf 0x10,
+gargoyle 0x1d, wolf/dog 0x20, player 4...) and calls SETUPOBJ, whose 96-case switch on that
+index sets the `Animator`, speeds, frame counts and list priority. `SPAWNOBJ(type, list, ...)`
+uses the same indices for objects made at run time. INITOBJ then resets `FrameNo` to 0 and sets
+the first frame (FOBJIMAGE). It's frame 0, except for the player (`_YouWalkID[9]`, or
+`_YouJumpID[1]` on levels 13, 16, 22 and 25) and level 4's gargoyles (`GargoyleID[1]`).
+`malwalk` in the list marks the player's start; `_YouWalkID` points at the male or female set
+by `_GameFlags` bit 2. `info` is a per-type parameter: the bat's `l` / `r` set `xDir`; the
+statue's number is a hint or gem index; the catwalk's `vt07` / `vb09` (and `h`, `p`...)
+encode a patrol (direction, distance in tiles).
+
+**Drawing them** (the list drawer at 3cb4:064c, `OBJVISIBLE`, `OBJONSCREEN`):
+
+```
+xDir == 0:  draw at (x + ImgXoff, y + ImgYoff)                 _DrawSprite / _ClipSprite
+xDir != 0:  draw at (x - (Cols - BoxCols + ImgXoff), y + ImgYoff), mirrored   _RevSprite
+```
+
+The sprites face left; `xDir` 1 mirrors them. The blinking variants (`_DrawColorSprite`...)
+draw every pixel in `BlinkColor` while `Blinks` counts down.
+
+## Tile attributes
+
+GRABSTUFF (RXGRABF.C) looks up each background tile's behaviour in a word table at DS:17c0
+(indexed by `BgMap & 0x1ff`), and each bonus tile's at DS:15c0 (indexed by the 7-bit tile
+number). For example, 0x74 is a secret, which it clears by masking bit 13 of the cell, and
+0x71 is used too. On levels 5 and 6, values 10 to 20 are warps into `_WarpCoords`. This is
+where to start on the background flag bits.
+
