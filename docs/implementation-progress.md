@@ -30,7 +30,25 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 - Ghidra 12.1.4 is in `C:\Users\Jason\Downloads\Ghidra\ghidra_12.1.4_PUBLIC` (its JDK is
   beside it). Test Ghidra scripts headless on a *copy* of `ghidra/`: the GUI holds the lock.
 - Raw disassembly where Ghidra stops (computed jumps in the blitters): pip-install capstone
-  with `--target` into a scratch folder and disassemble the EXE image directly.
+  with `--target` into a scratch folder and disassemble the EXE image directly. In the raw
+  image, far-call segments are unrelocated (`lcall 0x2c7c:...` is Ghidra's 3c7c).
+
+## Working tips
+
+- Bulk decompiles: GhidraMCP's HTTP backend answers `GET /decompile?name=FUNCNAME` with JSON
+  (`data.code`). A small script saving a list of functions to files beats reading each one
+  through the MCP tool.
+- Animator constants in decompiles: `DAT_4a77_xxxx` is the value xxxx; `DAT_5000_xxxx` is
+  xxxx + 0x5890; string labels like `s_..._4a77_0fe3 + 5` are 0x0fe8. When in doubt, read the
+  immediate from the machine code (`C7 44 2C lo hi` = `MOV [SI+2Ch], imm`).
+  `tools/animators.py` lists each object type's animators this way.
+- Arguments the decompiler drops (`PLAYERUP()`) or hides in inlined `rand()` maths: read the
+  pushes before the call in the raw disassembly.
+- Editing: the Bash tool collapses `\\` in heredocs, so `\n` inside a Python edit script
+  passed by heredoc breaks C strings. Write such scripts to a file first (or use the Edit
+  tool). Keep files LF: Python on Windows writes CRLF unless opened with `newline=""`.
+- Testing: headless runs with `--hold`, `--player`, `--list` and `--sweep` (see Running);
+  compare traced positions and speeds with the decompiled constants (ticks are 582/s).
 
 ## Running
 
