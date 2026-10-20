@@ -35,14 +35,18 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 ## Running
 
 ```
-build/roc.exe game/ROC.EXE                          # level viewer, level 0
-build/roc.exe game/ROC.EXE --level 5 --pos 400,64   # level 5, camera at map pixel 400,64
-build/roc.exe game/ROC.EXE --level 5 --screenshot out.png   # one 320x200 view, no window
+build/roc.exe game/ROC.EXE                          # run level 0
+build/roc.exe game/ROC.EXE --level 5 --pos 400,64   # level 5, free camera at map pixel 400,64
 build/roc.exe game/ROC.EXE --level 5 --no-objects   # the map without its objects
+# headless: run 1800 ticks (about 3 s) with the camera and the player placed, save one view
+build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800 --screenshot out.png
 ```
 
-`ROC.DAT` must be next to the EXE. Viewer keys: arrows scroll (Shift faster), PgUp / PgDn
-change level, O toggles the objects, F12 saves `shotNNN.png`, Esc quits.
+`ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. The
+player's behaviour isn't ported, so the arrow keys move the player freely (Shift faster) and
+the view follows; C toggles a free camera, PgUp / PgDn change level, O toggles the objects,
+Space pauses, F12 saves `shotNNN.png`, Esc quits. Objects whose behaviour isn't ported stay
+still, and each such animator is reported once on stderr.
 
 ## Completed
 
@@ -57,11 +61,22 @@ change level, O toggles the objects, F12 saves `shotNNN.png`, Esc quits.
     `.led` loading (palette, maps, tile counts, objects), tile sets, map drawing.
   - `src/png.c`: screenshot writer (from ptomb-port).
   - Verified: a view of every level matches the Python renders pixel for pixel.
-- Port, objects: `src/object.c` loads the sprite sets a level's object list names and places
-  its objects as LOADOBJ / INITOBJ do (hotspot and the -8 adjustment, the bottom check, first
-  frames for the player and level 4's gargoyles, bat facing), drawn as the list drawer at
-  3cb4:064c does. Every level loads; spot-checked views show objects standing on the floors.
-  They don't move yet: their behaviours (SETUPOBJ / Animator) are the next milestone.
+- Port, object engine (notes, "Running objects" and "Tiles"):
+  - `src/engine.c`: objects (OBJstruct + USERstruct, 16-bit arithmetic), the priority-sorted
+    lists and the off-screen list, SPAWNOBJ / OBJKILL, ANIMATORUPDATE at 582 ticks a
+    second, NEXTFRAME, OBJVISIBLE / OBJONSCREEN, CANGO* / CANMOVE (collision bits, tile
+    types, slopes), Borland `rand`, drawing. Animators keep their original 16-bit values and
+    are looked up in a table; unported ones do nothing. Sound, damage and the player are
+    stubs.
+  - `src/setup.c`: INITOBJ, and SETUPOBJ for the 40 object types the levels place plus the
+    spawned leaf, bird and dropping.
+  - `src/behave.c`: DOLEAF/FDOLEAF, DOBIRD, DOBAT, DOARROWSIGN, GENERICBEGINFALL,
+    GENERICFALL, GENERICDOWN, DOPROJECTILE (the droppings' path), NULLANIMATOR.
+  - `src/level.c` also loads the tile type tables and `_slope`; `src/imagetab.h` (generated
+    by `tools/gen_imagetab.py`) is the `_Img` layout.
+  - Verified headless: all 29 levels run 30,000 ticks; in forest1 the bats fly in from the
+    view's edge, bob and bounce between the edges, the birds take off when the player comes
+    near and their droppings fall, land and splat, and the leaves fall.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -69,20 +84,20 @@ change level, O toggles the objects, F12 saves `shotNNN.png`, Esc quits.
 
 ## Next steps
 
-1. **Object behaviours**: SETUPOBJ (RXSETUPF.C) now decompiles. Its switch on the type index
-   (notes, "Level objects") gives each object its `Animator`, speeds and frame counts. Start
-   with simple animated ones (leaf, bat, bird) to get frame stepping (`ANIMATORUPDATE`,
-   `FrameCount` / `MaxFrames` / `AnimInc`) and the object lists (`_MainListHead`,
-   `_ForeListHead`, `_SlowListHead`, `_OffListHead`; `MOVEALLOFFTOON`, `SCREENLISTUPDATE`).
-   The `Animator` values decompile as odd `DAT_4a77_xxxx` or string addresses: they are near
-   pointers into the behaviour code segment, not into DGROUP.
-2. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
+1. **More behaviours**, a module (RXFOREST.C, RXCASTLE.C, ...) at a time; stderr lists the
+   animators a level reaches that aren't ported. Forest1 needs BANDITWALK (cat bandits),
+   DOCONTAINER (statues: hints and gems), FLOATINGPLATFORM / CRUMBLINGPLATFORM (catwalk), the
+   bat's HITPLAYER path, DOCAVESPIKES (stakes). Then the remaining SETUPOBJ cases for spawned
+   types. `tools/animators.py` maps types to animators.
+2. **The player** (RXYOU.C, RXYOUF.C: YOUBEGINRUN and the YOU* states), with keyboard input
+   (KBD3.C), the scrolling (`SCROLLRIGHT`... in 3cb4, `PROCESSLEVEL`) and damage (HITPLAYER,
+   ENEMYHIT). This replaces the viewer's free-flying player and centred camera.
+3. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
    `PROCESSLEVEL`. Objects are `OBJstruct` (48 bytes) whose `Animator` field is a near pointer
    to a behaviour function (`DOGARGOYLE`, `YOURUN`...). Every behaviour decompiles readably
    now.
-3. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
-   `CANMOVE`, `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`.
-   GRABSTUFF uses tile behaviour tables at DS:17c0 (background) and DS:15c0 (bonus tiles);
-   see notes, "Tile attributes".
-4. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
+4. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
+   `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
+   are the collision flags (notes, "Tiles"); 13 is GRABSTUFF's secret bit.
+5. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
    (Apogee Sound System; VOC effects and MIDI music).

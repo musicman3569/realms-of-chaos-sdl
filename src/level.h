@@ -12,6 +12,7 @@ enum { LEVEL_COUNT = 29, TILE = 16 };
 typedef struct {
     char name[LEVEL_COUNT][10];
     uint8_t tile_set[LEVEL_COUNT];
+    uint8_t slope[13][16];       /* _slope (DGROUP:00df): surface height of slope types 200-212 */
 } level_list_t;
 
 bool level_list_load(level_list_t *list, const archive_t *arc, const char *exe_path,
@@ -43,6 +44,11 @@ typedef struct {
     uint16_t tile_count[5];      /* bg1, bg2, bg3, fg, bonus */
     level_object_t *objects;
     int object_count;
+    /* Tile types (LOADLEVEL reads them into 469b:17c0 / 16c0 / 15c0): per background tile
+     * (& 0x1ff), foreground tile and bonus tile. The low byte is what collision uses: 200-212
+     * are slopes (_slope), other values mark tiles GRABSTUFF reacts to. */
+    uint16_t bg_type[512], fg_type[128], bon_type[128];
+    uint8_t slope[13][16];       /* copied from the level list */
     uint8_t *bg_tiles;           /* the .bg file: layer 1, 2 and 3 tiles of 256 bytes */
     size_t bg_tiles_len;
     mask_tiles_t fg_tiles, bon_tiles;

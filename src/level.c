@@ -5,7 +5,7 @@
 #include <string.h>
 
 /* ROC.EXE: DGROUP is paragraph 3a77 of the load image (Ghidra 4a77 with base 1000). */
-enum { DGROUP_PARA = 0x3A77, LEVEL_SET_TABLE = 0x033E, OBJECT_SIZE = 62 };
+enum { DGROUP_PARA = 0x3A77, LEVEL_SET_TABLE = 0x033E, SLOPE_TABLE = 0x00DF, OBJECT_SIZE = 62 };
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 
@@ -33,7 +33,9 @@ bool level_list_load(level_list_t *list, const archive_t *arc, const char *exe_p
     if (ok) {
         const long at = (long)rd16(mz + 8) * 16 + DGROUP_PARA * 16L + LEVEL_SET_TABLE;
         ok = fseek(f, at, SEEK_SET) == 0 &&
-             fread(list->tile_set, 1, LEVEL_COUNT, f) == LEVEL_COUNT;
+             fread(list->tile_set, 1, LEVEL_COUNT, f) == LEVEL_COUNT &&
+             fseek(f, at - LEVEL_SET_TABLE + SLOPE_TABLE, SEEK_SET) == 0 &&
+             fread(list->slope, 1, sizeof list->slope, f) == sizeof list->slope;
     }
     if (f)
         fclose(f);
@@ -71,6 +73,7 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
         return false;
     }
     lv->number = number;
+    memcpy(lv->slope, list->slope, sizeof lv->slope);
     char path[32];
     snprintf(path, sizeof path, "%s.led", list->name[number]);
     size_t len;
@@ -107,7 +110,7 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
             p += 10;
             lv->object_count = rd16(d + p);
             p += 2;
-            ok = p + (size_t)lv->object_count * OBJECT_SIZE <= len;
+            ok = p + (size_t)lv->object_count * OBJECT_SIZE + 0x600 <= len;
         }
         if (ok && lv->object_count) {
             lv->objects = calloc((size_t)lv->object_count, sizeof *lv->objects);
@@ -118,6 +121,14 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
                 memcpy(o->info, d + p + 26, 32);
                 o->x = rd16(d + p + 58);
                 o->y = rd16(d + p + 60);
+            }
+        }
+        if (ok) {
+            for (int i = 0; i < 512; i++)
+                lv->bg_type[i] = rd16(d + p + i * 2);
+            for (int i = 0; i < 128; i++) {
+                lv->fg_type[i] = rd16(d + p + 0x400 + i * 2);
+                lv->bon_type[i] = rd16(d + p + 0x500 + i * 2);
             }
         }
     }

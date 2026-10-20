@@ -186,6 +186,11 @@ if y <= Rows*16 - 1: INITOBJ(set, x, y, info)
 So the list stores the top left corner of frame 0, 8 pixels low, and the object's x / y is its
 hotspot, in map pixels (tile row r is at y = r*16, the same coordinates as `_OrgX/_OrgY`).
 
+The `IMAGEDATA` names are the `IMAGEstruct` field names without `ID`, lower case: 141 sets
+in all, `ArrowID[3]` to `WolfID[6]`, 1,059 frame pointers. The behaviours index these arrays
+directly, sometimes past their end (DOBIRD's `BirdID[4]` is `BirdpoopID[2]`), so the port keeps
+the same flat table: `tools/gen_imagetab.py` generates `src/imagetab.h` from the debug info.
+
 INITOBJ allocates the `OBJstruct` (48 bytes) and a `USERstruct` (27 bytes), then picks the
 behaviour by comparing the sprite set pointer with `_Img` slots: it puts an object type index
 in `UserPtr->FrameNo` (bat 0x1f, catwalk 0x22, catband/catmace 0x23, statue 0x15, leaf 0x10,
@@ -209,11 +214,63 @@ xDir != 0:  draw at (x - (Cols - BoxCols + ImgXoff), y + ImgYoff), mirrored   _R
 The sprites face left; `xDir` 1 mirrors them. The blinking variants (`_DrawColorSprite`...)
 draw every pixel in `BlinkColor` while `Blinks` counts down.
 
-## Tile attributes
+## Running objects (the engine)
 
-GRABSTUFF (RXGRABF.C) looks up each background tile's behaviour in a word table at DS:17c0
-(indexed by `BgMap & 0x1ff`), and each bonus tile's at DS:15c0 (indexed by the 7-bit tile
-number). For example, 0x74 is a secret, which it clears by masking bit 13 of the cell, and
-0x71 is used too. On levels 5 and 6, values 10 to 20 are warps into `_WarpCoords`. This is
-where to start on the background flag bits.
+**The loop** (`RUNLEVEL`, 3cb4:157c). Each frame: `RUNTIMERS`, `RUNANIMTILES`,
+`ANIMATORUPDATE(_Update)`, draw the main, foreground and slow lists, flip pages, call the
+level's `FrameHook`, `SCREENLISTUPDATE`, and set `_Update` to the timer ticks the frame took.
+
+**The clock.** `_MachInit` calls `_speedup(0x20)`, which schedules a timer task (1000:c5d3)
+at 182000 * 32 / 10000 = 582 Hz, 32 times the PC's 18.2 Hz. Each run adds `_TicAmt` (1;
+`PAUSEACTION` sets it to 0) to `_TimerTics`. So game time runs at about 582 ticks a second
+however fast the frames are.
+
+**ANIMATORUPDATE** (1000:c268) runs the main list `_Update` times, the foreground list
+`_Update` times and the slow list once. For each object: `Counter++`; if flag 0x40 is set,
+`xPart += xSpeed` and the animator only runs when that carries out of 16 bits (so `xSpeed` is
+a rate, in 1/65536 of a run per tick); then `Animator(objp)`. A nonzero return ends the
+level. The next object is read before the call, so an animator may kill itself.
+
+**Animators** are near pointers into code segment 1000: ANIMATORUPDATE (in 1000) calls them
+with a near `CALL`. The decompiler shows the stored constants as DGROUP addresses:
+`DAT_4a77_1987` is 0x1987 (DOBAT), and `DAT_5000_69cf` is linear 0x569cf, i.e. DGROUP
+(0x4a770) + 0xc25f (NULLANIMATOR); string labels like `s_Challenge_4a77_0fe3 + 5` are 0x0fe8
+(DOGARGOYLE). `tools/animators.py` lists the animator(s) SETUPOBJ gives each of the 96 object
+types, from the machine code, named from the debug info. Behaviours switch animators as they
+go (a statue: GENERICBEGINFALL → GENERICFALL → on landing DOCONTAINER).
+
+**Lists.** `_MainListHead`, `_ForeListHead`, `_SlowListHead` and `_OffListHead` are singly
+linked lists of objects sorted by ascending `Link.priority` (`ADDPLINKNODE` puts a new object
+before the first one of equal or higher priority), so the priority is also the drawing order.
+`OBJstruct.Update` is how far outside the view (in pixels) an object keeps running: 0x32 by
+default, 0x1000 (always) for the foreground and slow lists. `ONTOOFFUPDATE` moves main and
+foreground objects beyond that margin to the off list, where they neither run nor draw, and
+`OFFTOONUPDATE` moves them back to their own list (`OBJstruct.List`) when the view comes
+near.
+
+**Objects.** `SPAWNOBJ` / `INITOBJ` allocate with `ALLOCNEAR`, which is `calloc`, so all
+fields start at 0. `OBJIMAGE` sets `ImageID` and `xSize` / `ySize` (the frame's `BoxCols` /
+`BoxRows`); `NEXTFRAME` steps `FrameNo` every `FrameCountMax` calls (0..`MaxFrames`,
+wrapping, or ping-ponging if `AnimInc` is set) and only changes `ImageID`. Some spawners set
+`ImageID` to 0 to be invisible but still call `OBJVISIBLE`, which then reads the frame header
+at 0000:0000 (the interrupt table); the port uses an empty frame. `FRANDOM(n)` is
+`rand() * n / 0x8000` with Borland's `rand` (seed * 0x015a4e35 + 1, bits 16-30).
+
+## Tiles: types and collision
+
+**Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a
+cell the object's left edge would enter has 0x400, `CANGORIGHT` 0x200, `CANGOUP` 0x1000 and
+`CANGODOWN` 0x800 (each checks every cell along that edge, and only when the edge is on a
+tile boundary).
+
+**Tile types.** After the object list each `.led` holds three word tables: 512 for the
+background tiles (by `BgMap & 0x1ff`), 128 for the foreground tiles and 128 for the bonus
+tiles. LOADLEVEL reads them into segment 469b at 17c0, 16c0 and 15c0 (not DGROUP). The 0x600
+bytes after them are still unread. `CANMOVE` (RXGENERL.C:264) uses the low byte of the type
+under the middle of an object's feet: 200-212 are slopes whose surface height per pixel
+column is `_slope[k - 200][16]` (DGROUP:00df); it sets `UpOffset` (standing below the
+slope's surface) and `DownOffset` (1: can fall, 11: the surface is one pixel below).
+GRABSTUFF (RXGRABF.C) reacts to other values: 0x74 is a secret, which it clears by masking
+bit 13 of the cell, and 0x71 is used too. On levels 5 and 6, values 10 to 20 are warps into
+`_WarpCoords`.
 

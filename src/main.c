@@ -1,14 +1,20 @@
-/* Realms of Chaos port: level viewer (first milestone).
+/* Realms of Chaos port: level viewer with live objects.
  *
- * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--no-objects] [--screenshot out.png]
+ * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
+ *            [--screenshot out.png]
  *
- * Reads ROC.DAT next to the EXE (and the level table from the EXE itself), then shows a level
- * in a 320x200 view with its objects in their starting frames: arrow keys scroll (Shift:
- * faster), PgUp / PgDn change level, O toggles the objects, F12 saves shotNNN.png, Esc quits. With --screenshot it renders one view to a PNG without a window. */
+ * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
+ * a 320x200 view at the game's timer rate. The player's own behaviour isn't ported yet, so
+ * the arrow keys move the player freely (Shift: faster) and the view follows; C switches to
+ * a free camera. Objects react to the player and the view as in the game, as far as their
+ * behaviours are ported. PgUp / PgDn change level, O toggles the objects, Space pauses,
+ * F12 saves shotNNN.png, Esc quits. With --screenshot it renders one view to a PNG without a
+ * window, after running --ticks timer ticks (default 0) with the camera at --pos.
+ * --player moves the player (its hotspot, map pixels) before the level starts running. */
 #include "archive.h"
+#include "engine.h"
 #include "gfx.h"
 #include "level.h"
-#include "object.h"
 #include "png.h"
 
 #include <SDL.h>
@@ -23,6 +29,10 @@ typedef struct {
     const char *exe;
     int level;
     int x, y;
+    bool pos;
+    int px, py;
+    bool player;
+    long ticks;
     const char *screenshot;
     bool no_objects;
 } options_t;
@@ -35,7 +45,11 @@ static bool parse_args(int argc, char **argv, options_t *o)
         if (!strcmp(a, "--level") && i + 1 < argc)
             o->level = atoi(argv[++i]);
         else if (!strcmp(a, "--pos") && i + 1 < argc)
-            sscanf(argv[++i], "%d,%d", &o->x, &o->y);
+            o->pos = sscanf(argv[++i], "%d,%d", &o->x, &o->y) == 2;
+        else if (!strcmp(a, "--player") && i + 1 < argc)
+            o->player = sscanf(argv[++i], "%d,%d", &o->px, &o->py) == 2;
+        else if (!strcmp(a, "--ticks") && i + 1 < argc)
+            o->ticks = atol(argv[++i]);
         else if (!strcmp(a, "--no-objects"))
             o->no_objects = true;
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -90,12 +104,46 @@ static void clamp_camera(const level_t *lv, int *x, int *y)
     *y = *y < 0 ? 0 : *y;
 }
 
+/* The view centred on the player (a stand-in for the game's scrolling). */
+static void follow_player(const level_t *lv, int *x, int *y)
+{
+    if (!G.you)
+        return;
+    *x = G.you->x - VIEW_W / 2;
+    *y = G.you->y - VIEW_H / 2;
+    clamp_camera(lv, x, y);
+}
+
+static bool start_level(level_t *lv, const archive_t *arc, const level_list_t *list, int n,
+                        char *err, size_t errlen)
+{
+    level_t nl;
+    if (!level_load(&nl, arc, list, n, err, errlen))
+        return false;
+    game_end();
+    level_free(lv);
+    *lv = nl;
+    if (!game_start(lv, arc, err, errlen)) {
+        fprintf(stderr, "roc: %s\n", err);
+        return true; /* the map still shows */
+    }
+    return true;
+}
+
+static void render(surface_t *view, const level_t *lv, int cam_x, int cam_y, bool objects)
+{
+    surface_fill(view, 0);
+    level_draw(lv, view, cam_x, cam_y);
+    if (objects)
+        game_draw(view);
+}
+
 int main(int argc, char **argv)
 {
     options_t opt;
     if (!parse_args(argc, argv, &opt)) {
-        fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--no-objects] "
-                        "[--screenshot out.png]\n");
+        fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
+                        "[--no-objects] [--ticks N] [--screenshot out.png]\n");
         return 2;
     }
 
@@ -110,9 +158,8 @@ int main(int argc, char **argv)
     }
 
     level_t lv;
-    objects_t objs;
-    if (!level_load(&lv, &arc, &list, opt.level, err, sizeof err) ||
-        !objects_load(&objs, &lv, &arc, err, sizeof err)) {
+    memset(&lv, 0, sizeof lv);
+    if (!start_level(&lv, &arc, &list, opt.level, err, sizeof err)) {
         fprintf(stderr, "roc: %s\n", err);
         return 1;
     }
@@ -121,20 +168,35 @@ int main(int argc, char **argv)
         fprintf(stderr, "roc: out of memory\n");
         return 1;
     }
+    if (opt.player && G.you) {
+        G.you->x = (uint16_t)opt.px;
+        G.you->y = (uint16_t)opt.py;
+    }
     int cam_x = opt.x, cam_y = opt.y;
-    clamp_camera(&lv, &cam_x, &cam_y);
+    if (opt.pos)
+        clamp_camera(&lv, &cam_x, &cam_y);
+    else
+        follow_player(&lv, &cam_x, &cam_y);
 
     if (opt.screenshot) {
-        level_draw(&lv, &view, cam_x, cam_y);
-        if (!opt.no_objects)
-            objects_draw(&objs, &view, cam_x, cam_y);
+        /* Run --ticks in frames of 8 ticks (about 70 frames a second) with a fixed camera. */
+        G.org_x = (uint16_t)cam_x;
+        G.org_y = (uint16_t)cam_y;
+        for (long t = 0; t < opt.ticks; t += 8)
+            game_frame((uint16_t)(opt.ticks - t < 8 ? opt.ticks - t : 8));
+        render(&view, &lv, cam_x, cam_y, !opt.no_objects);
         const int rc = save_png(opt.screenshot, &view, lv.palette);
         if (rc)
             fprintf(stderr, "roc: can't write %s\n", opt.screenshot);
-        printf("level %d %s: %dx%d tiles, %d objects (%d placed), view at %d,%d\n", lv.number,
-               list.name[lv.number], lv.cols, lv.rows, lv.object_count, objs.count, cam_x,
-               cam_y);
-        objects_free(&objs);
+        int count[LIST_COUNT] = {0};
+        for (int id = 0; id < LIST_COUNT; id++)
+            for (const obj_t *o = G.list[id]; o; o = o->next)
+                count[id]++;
+        printf("level %d %s: %dx%d tiles, view at %d,%d after %ld ticks; objects: %d main, "
+               "%d fore, %d slow, %d off screen\n",
+               lv.number, list.name[lv.number], lv.cols, lv.rows, cam_x, cam_y, opt.ticks,
+               count[LIST_MAIN], count[LIST_FORE], count[LIST_SLOW], count[LIST_OFF]);
+        game_end();
         level_free(&lv);
         surface_free(&view);
         arc_close(&arc);
@@ -160,7 +222,10 @@ int main(int argc, char **argv)
     uint32_t *argb = malloc(VIEW_W * VIEW_H * sizeof *argb);
 
     int shot = 0;
-    bool running = true, show_objects = !opt.no_objects;
+    bool running = true, show_objects = !opt.no_objects, free_camera = opt.pos, paused = false;
+    const double freq = (double)SDL_GetPerformanceFrequency();
+    Uint64 last = SDL_GetPerformanceCounter();
+    double tick_acc = 0;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -177,6 +242,10 @@ int main(int argc, char **argv)
                     next = (lv.number + LEVEL_COUNT - 1) % LEVEL_COUNT;
                 else if (k == SDLK_o)
                     show_objects = !show_objects;
+                else if (k == SDLK_c)
+                    free_camera = !free_camera;
+                else if (k == SDLK_SPACE)
+                    paused = !paused;
                 else if (k == SDLK_F12) {
                     char name[32];
                     snprintf(name, sizeof name, "shot%03d.png", shot++);
@@ -184,44 +253,55 @@ int main(int argc, char **argv)
                         printf("saved %s\n", name);
                 }
                 if (next >= 0) {
-                    level_t nl;
-                    objects_t no;
-                    bool ok = level_load(&nl, &arc, &list, next, err, sizeof err);
-                    if (ok && !objects_load(&no, &nl, &arc, err, sizeof err)) {
-                        level_free(&nl);
-                        ok = false;
-                    }
-                    if (ok) {
-                        objects_free(&objs);
-                        level_free(&lv);
-                        lv = nl;
-                        objs = no;
-                        cam_x = cam_y = 0;
-                    } else {
+                    if (start_level(&lv, &arc, &list, next, err, sizeof err))
+                        follow_player(&lv, &cam_x, &cam_y);
+                    else
                         fprintf(stderr, "roc: %s\n", err);
-                    }
                 }
             }
         }
+
+        const Uint64 now = SDL_GetPerformanceCounter();
+        tick_acc += (double)(now - last) / freq * TICKS_PER_SECOND;
+        last = now;
+        int ticks = (int)tick_acc;
+        tick_acc -= ticks;
+        if (ticks > 100)
+            ticks = 100;
+
         const Uint8 *keys = SDL_GetKeyboardState(NULL);
         const int step = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] ? 12 : 3;
-        cam_x += (keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT]) * step;
-        cam_y += (keys[SDL_SCANCODE_DOWN] - keys[SDL_SCANCODE_UP]) * step;
-        clamp_camera(&lv, &cam_x, &cam_y);
+        const int dx = (keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT]) * step;
+        const int dy = (keys[SDL_SCANCODE_DOWN] - keys[SDL_SCANCODE_UP]) * step;
+        if (free_camera || !G.you) {
+            cam_x += dx;
+            cam_y += dy;
+            clamp_camera(&lv, &cam_x, &cam_y);
+        } else {
+            int px = G.you->x + dx, py = G.you->y + dy;
+            const int max_x = lv.cols * TILE - 1, max_y = lv.rows * TILE - 1;
+            G.you->x = (uint16_t)(px < 0 ? 0 : px > max_x ? max_x : px);
+            G.you->y = (uint16_t)(py < 0 ? 0 : py > max_y ? max_y : py);
+            if (dx)
+                G.you->xdir = dx > 0;
+            follow_player(&lv, &cam_x, &cam_y);
+        }
+        G.org_x = (uint16_t)cam_x;
+        G.org_y = (uint16_t)cam_y;
+        if (!paused)
+            game_frame((uint16_t)ticks);
 
-        surface_fill(&view, 0);
-        level_draw(&lv, &view, cam_x, cam_y);
-        if (show_objects)
-            objects_draw(&objs, &view, cam_x, cam_y);
+        render(&view, &lv, cam_x, cam_y, show_objects);
         to_argb(&view, lv.palette, argb);
         SDL_UpdateTexture(tex, NULL, argb, VIEW_W * sizeof *argb);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, NULL, NULL);
         SDL_RenderPresent(ren);
 
-        char title[96];
-        snprintf(title, sizeof title, "Realms of Chaos - level %d %s (%d,%d)", lv.number,
-                 list.name[lv.number], cam_x, cam_y);
+        char title[128];
+        snprintf(title, sizeof title, "Realms of Chaos - level %d %s (%d,%d)%s%s", lv.number,
+                 list.name[lv.number], cam_x, cam_y, free_camera ? " [free camera]" : "",
+                 paused ? " [paused]" : "");
         SDL_SetWindowTitle(win, title);
     }
 
@@ -230,7 +310,7 @@ int main(int argc, char **argv)
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
-    objects_free(&objs);
+    game_end();
     level_free(&lv);
     surface_free(&view);
     arc_close(&arc);
