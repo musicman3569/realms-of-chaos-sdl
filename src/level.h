@@ -61,4 +61,7 @@ void level_free(level_t *lv);
 /* Draw the map with its top left corner at map pixel (cam_x, cam_y). */
 void level_draw(const level_t *lv, surface_t *s, int cam_x, int cam_y);
 
+/* Draw the cell's foreground (.mfg) tile again, if it has one, over whatever is there now. */
+void level_draw_fg_cell(const level_t *lv, surface_t *s, int row, int col, int cam_x, int cam_y);
+
 #endif

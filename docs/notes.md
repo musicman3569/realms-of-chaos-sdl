@@ -216,6 +216,13 @@ xDir != 0:  draw at (x - (Cols - BoxCols + ImgXoff), y + ImgYoff), mirrored   _R
 The sprites face left; `xDir` 1 mirrors them. The blinking variants (`_DrawColorSprite`...)
 draw every pixel in `BlinkColor` while `Blinks` counts down.
 
+**Depth.** Foreground (`.mfg`) tiles stand in front of the main list: once RUNLEVEL has drawn
+the main list, it calls 3cb4:0bec for every visible main-list object, which masks the `.mfg`
+tiles (foreground byte bit 7 set) of the cells the object's image covers back over it (only
+cells inside the view's 22 x 14). That puts the forest's berry bushes and the swamp's
+front trees over the player and the enemies. Bonus (`.mbg`) tiles stay behind, and the
+foreground and slow lists are drawn afterwards, on top of everything.
+
 ## Running objects (the engine)
 
 **The loop** (`RUNLEVEL`, 3cb4:157c). Each frame: `RUNTIMERS`, `RUNANIMTILES`,

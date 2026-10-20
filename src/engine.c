@@ -645,6 +645,24 @@ void game_frame(uint16_t ticks)
     free_dead();
 }
 
+/* 3cb4:0bec: put the foreground (.mfg) tiles back over an object. RUNLEVEL calls it for every
+ * visible object of the main list once the list is drawn, for the cells its image covers
+ * (within the view's 22 x 14 cells), so tree trunks and bushes stand in front of the player
+ * and the enemies. Bonus (.mbg) tiles stay behind them, and the foreground and slow lists are
+ * drawn after this, over everything. */
+static void fg_over(surface_t *s, const obj_t *o)
+{
+    const sprite_t *f = o->image;
+    const uint16_t x = left_edge(o, f), y = (uint16_t)(o->y + f->img_yoff);
+    const unsigned c0 = x >> 4, c1 = (uint16_t)(x + f->cols - 1) >> 4;
+    const unsigned r0 = y >> 4, r1 = (uint16_t)(y + f->rows - 1) >> 4;
+    const unsigned vc = G.org_x >> 4, vr = G.org_y >> 4;
+    for (unsigned r = r0; r <= r1; r++)
+        for (unsigned c = c0; c <= c1; c++)
+            if (c >= vc && c <= vc + 0x15 && r >= vr && r <= vr + 0x0D)
+                level_draw_fg_cell(G.lv, s, (int)r, (int)c, G.org_x, G.org_y);
+}
+
 void game_draw(surface_t *s)
 {
     /* The list drawer at 3cb4:064c, for the main, foreground and slow lists in turn. A
@@ -653,6 +671,11 @@ void game_draw(surface_t *s)
      * drawn in BlinkColor. */
     static const int order[] = {LIST_MAIN, LIST_FORE, LIST_SLOW};
     for (int k = 0; k < 3; k++) {
+        if (order[k] == LIST_FORE) {
+            for (const obj_t *o = G.list[LIST_MAIN]; o; o = o->next)
+                if (o->image && obj_visible(o))
+                    fg_over(s, o);
+        }
         for (obj_t *o = G.list[order[k]]; o; o = o->next) {
             const sprite_t *f = o->image;
             if (!f)

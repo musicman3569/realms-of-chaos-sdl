@@ -200,3 +200,12 @@ void level_draw(const level_t *lv, surface_t *s, int cam_x, int cam_y)
         }
     }
 }
+
+void level_draw_fg_cell(const level_t *lv, surface_t *s, int row, int col, int cam_x, int cam_y)
+{
+    if (row < 0 || row >= lv->rows || col < 0 || col >= lv->cols)
+        return;
+    const int f = lv->fg[row * lv->cols + col];
+    if (f & 0x80)
+        draw_mask(s, &lv->fg_tiles, f & 0x7F, col * TILE - cam_x, row * TILE - cam_y);
+}
