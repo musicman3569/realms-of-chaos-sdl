@@ -14,6 +14,10 @@ add_executable(roc
     src/engine.c
     src/setup.c
     src/behave.c
+    src/rxgenerl.c
+    src/rxforest.c
+    src/rxplat.c
+    src/rxcave.c
     src/png.c
 )
 

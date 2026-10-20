@@ -40,17 +40,22 @@ enum {
     A_DOBOARSPEAR = 0x1531, A_DOSKELHEAD = 0x1540, A_SKELWALK = 0x157c, A_SKELLUNGE = 0x159a,
     A_DEMONWAIT = 0x15d6, A_DOLEAF = 0x1630, A_DOBIRD = 0x163f, A_DOBAT = 0x1987,
     A_BANDITWALK = 0x192d, A_WOLFRUN = 0x1ca0, A_DOARROWSIGN = 0x3010,
-    A_DOCOLLECTABLE = 0x3093, A_GENERICBEGINFALL = 0x415b, A_GENERICFALL = 0x4295,
+    A_DOCOLLECTABLE = 0x3093, A_XLEVEL = 0x3b1a, A_GENERICBEGINJUMP = 0x3e54,
+    A_GENERICJUMP = 0x3f78, A_GENERICUP = 0x3fa4, A_GENERICBEGINFALL = 0x415b,
+    A_GENERICFALL = 0x4295,
     A_DOPROJECTILE = 0x46bb, A_DOCONTAINER = 0x5216, A_DOROCKMONSTER = 0x5a18,
     A_GOBLINSTAND = 0x5fc3, A_GOBLINRUN = 0x60e5, A_BOSSHEADBOUNCE = 0x6899,
     A_DOSPITTLE2 = 0x68e4, A_DOSPOREHOLE = 0x725c, A_DOSPORE = 0x7357, A_DOCHAIN = 0x7a52,
     A_DOCHAINEND = 0x7c96, A_FROGPLAT = 0x849b, A_FLOATINGPLATFORM = 0x86a4,
-    A_DOCONTAINERBOMB = 0x8893, A_CRUMBLINGPLATFORM = 0x8a20, A_DOPULLEY = 0x8d31,
-    A_PULLYPLATWAIT = 0x8de5, A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c,
+    A_DOCONTAINERBOMB = 0x8893, A_CRUMBLINGPLATFORM = 0x8a20, A_CRUMBLEPLATSHAKE = 0x8a6c,
+    A_CRUMBLEPLATFALL = 0x8bd7, A_DOPULLEY = 0x8d31, A_PULLYPLATWAIT = 0x8de5,
+    A_PULLYPLATMOVE = 0x8e2b, A_PULLYPLATRETURN = 0x8fbc, A_PULLYPLATDIP = 0x9144,
+    A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c,
     A_SWAMPRAFT = 0x9744, A_ROLLINGBOULDER = 0xa63a, A_MUDMANWALK = 0xafca,
     A_DOMOSQUITO = 0xafd9, A_FROGLAND = 0xb006, A_DODRAGONBOB = 0xb0ee,
-    A_DRAGONHEADDIE = 0xb139, A_YOUBEGINRUN = 0xb5dd, A_YOUBEGINIMPALE = 0xbead,
-    A_NULLANIMATOR = 0xc25f,
+    A_DRAGONHEADDIE = 0xb139, A_YOUBEGINRUN = 0xb5dd, A_YOUBEGINFALL = 0xb628,
+    A_YOUBEGINCROUCH = 0xb655, A_YOUCROUCH = 0xb673, A_YOUBEGINIMPALE = 0xbead,
+    A_YOUDIE = 0xbebc, A_YOUCRUSH = 0xbecb, A_NULLANIMATOR = 0xc25f,
 };
 
 typedef struct obj obj_t;
@@ -101,6 +106,8 @@ typedef struct {
     uint8_t diff_mode;           /* _DiffMode */
     uint16_t game_flags;         /* _GameFlags: bit 2 = playing the male character */
     uint8_t lightning_flag;      /* _LightningFlag */
+    uint8_t message_on;          /* _MessageOn: hint messages enabled */
+    uint8_t you_invincible;      /* _YouInvincible */
     uint16_t window_xsize;       /* _WindowXsize */
     int16_t center_off;          /* _CenterOff */
     uint16_t old_game_flags;     /* _OldGameFlags */
@@ -132,6 +139,8 @@ void obj_image(obj_t *o, const sprite_t *image);    /* OBJIMAGE / FOBJIMAGE */
 void next_frame(obj_t *o, int img_base);            /* NEXTFRAME(objp, &_Img.xxxID) */
 bool obj_visible(const obj_t *o);                   /* OBJVISIBLE: overlaps the view */
 bool obj_onscreen(const obj_t *o);                  /* OBJONSCREEN: wholly in the view */
+bool obj_overlap(const obj_t *a, const obj_t *b);   /* OBJOVERLAP: boxes overlap */
+uint16_t map_cell(unsigned row, unsigned col);      /* BgMap cell (0 outside the map) */
 bool can_go_up(const obj_t *o);
 bool can_go_down(const obj_t *o);
 bool can_go_left(const obj_t *o);
@@ -139,11 +148,20 @@ bool can_go_right(const obj_t *o);
 void can_move(obj_t *o);                            /* CANMOVE: sets UpOffset / DownOffset */
 void setup_obj(obj_t *o, uint8_t type);             /* SETUPOBJ (setup.c) */
 
+/* MOVE.C: move the player n pixels (PLAYERUP / PLAYERDOWN / PLAYERLEFT / PLAYERRIGHT). The
+ * original also checks the tiles entered for bit 0x2000 (grabbable: GRABSTUFF via _Grabber)
+ * and scrolls the view; both belong to the player, which isn't ported yet. */
+void player_up(uint8_t n);
+void player_down(uint8_t n);
+void player_left(uint8_t n);
+void player_right(uint8_t n);
+
 /* Not ported yet: the player, sound, damage. */
 int play_sample(uint8_t n, obj_t *o);               /* PLAYSAMPLE: returns a handle, 0 */
 bool sound_link_active(int16_t handle);
 void sound_link_kill(int16_t handle);
 void hit_player(obj_t *o);                          /* HITPLAYER */
 void enemy_hit(obj_t *o, uint8_t damage);           /* ENEMYHIT */
+void spike_check(obj_t *o, uint8_t up);             /* SPIKECHECK */
 
 #endif

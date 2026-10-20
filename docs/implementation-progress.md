@@ -40,6 +40,8 @@ build/roc.exe game/ROC.EXE --level 5 --pos 400,64   # level 5, free camera at ma
 build/roc.exe game/ROC.EXE --level 5 --no-objects   # the map without its objects
 # headless: run 1800 ticks (about 3 s) with the camera and the player placed, save one view
 build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800 --screenshot out.png
+# headless test: move the player across the whole map; list every object at the end
+build/roc.exe game/ROC.EXE --level 1 --ticks 40000 --sweep --list --screenshot out.png
 ```
 
 `ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. The
@@ -77,6 +79,17 @@ still, and each such animator is reported once on stderr.
   - Verified headless: all 29 levels run 30,000 ticks; in forest1 the bats fly in from the
     view's edge, bob and bounce between the edges, the birds take off when the player comes
     near and their droppings fall, land and splat, and the leaves fall.
+- Port, forest behaviours: the behaviours are split by original module (`src/rxgenerl.c`,
+  `rxforest.c`, `rxplat.c`, `rxcave.c`; `behave.c` is the table). Ported: BANDITWALK, WOLFRUN,
+  DOCAVESPIKES (stakes), DOCONTAINER (statues, except being smashed), the platforms
+  (FLOATINGPLATFORM, CRUMBLINGPLATFORM + shake / fall, pulley platforms + DOPULLEY, the dip)
+  with MAINTAINPLATFORM carrying the player, and the generic jump (GENERICBEGINJUMP,
+  GENERICJUMP, GENERICUP). Every object in the three forest levels now runs its own
+  behaviour; the player's and the damage it takes are the stubs left. Verified headless with
+  `--list`: bandits walk at 32 px/s, follow slopes and turn at ledges and every 0x835 ticks;
+  wolves run and turn; stakes cycle; floating platforms travel their 112 px and carry the
+  player; the player rides a pulley platform its 144 steps; a crumbling platform shakes,
+  falls and breaks up. A `--sweep` of all 29 levels runs without errors.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -84,20 +97,21 @@ still, and each such animator is reported once on stderr.
 
 ## Next steps
 
-1. **More behaviours**, a module (RXFOREST.C, RXCASTLE.C, ...) at a time; stderr lists the
-   animators a level reaches that aren't ported. Forest1 needs BANDITWALK (cat bandits),
-   DOCONTAINER (statues: hints and gems), FLOATINGPLATFORM / CRUMBLINGPLATFORM (catwalk), the
-   bat's HITPLAYER path, DOCAVESPIKES (stakes). Then the remaining SETUPOBJ cases for spawned
-   types. `tools/animators.py` maps types to animators.
-2. **The player** (RXYOU.C, RXYOUF.C: YOUBEGINRUN and the YOU* states), with keyboard input
-   (KBD3.C), the scrolling (`SCROLLRIGHT`... in 3cb4, `PROCESSLEVEL`) and damage (HITPLAYER,
-   ENEMYHIT). This replaces the viewer's free-flying player and centred camera.
+1. **The player** (next): RXYOU.C, RXYOUF.C (YOUBEGINRUN and the YOU* states the platforms
+   already switch to: YOUBEGINFALL, YOUCROUCH, YOUCRUSH...), keyboard input (KBD3.C), the
+   real MOVE.C player moves (grabbing 0x2000 tiles via GRABSTUFF, scrolling: SCROLLRIGHT...
+   in 3cb4, SETSCROLLBOUNDS, `PROCESSLEVEL`), and damage (HITPLAYER, SPIKECHECK, ENEMYHIT,
+   the whip / weapons). This replaces the viewer's free-flying player and centred camera.
+2. **More behaviours**, a module at a time; a `--sweep` run lists the animators a level
+   reaches that aren't ported. By how many levels need them: DOGARGOYLE (10), DOCAVEHOLE (5),
+   GOBLINSTAND, DOBOAR, MUDMANWALK, DOCAVESPIDER, DOCAVEFALLSPIKES, then the rest.
+   `tools/animators.py` maps object types to animators.
 3. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
    `PROCESSLEVEL`. Objects are `OBJstruct` (48 bytes) whose `Animator` field is a near pointer
    to a behaviour function (`DOGARGOYLE`, `YOURUN`...). Every behaviour decompiles readably
    now.
 4. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
    `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
-   are the collision flags (notes, "Tiles"); 13 is GRABSTUFF's secret bit.
+   are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
 5. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
    (Apogee Sound System; VOC effects and MIDI music).

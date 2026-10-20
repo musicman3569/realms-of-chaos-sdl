@@ -44,6 +44,17 @@ void setup_obj(obj_t *o, uint8_t type)
             G.you_climb = IMG_FEMCLIMB, G.you_attack = IMG_FEMATTAC;
         }
         break;
+    case 0x0E: /* debris (statue, crumbling platform) */
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0xB9;
+        o->frame_count_max = 1;
+        o->max_frames = 1;
+        o->anim_inc = 0;
+        o->surface_flags &= 0xFE;
+        o->gv[0] = 1;
+        o->gv[4] = 0xBE;
+        o->gv[5] = 0x0F;
+        break;
     case 0x0B: /* arrow sign */
         o->animator = A_DOARROWSIGN;
         o->priority = 0x0B;

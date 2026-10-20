@@ -1,7 +1,7 @@
 /* Realms of Chaos port: level viewer with live objects.
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
- *            [--screenshot out.png]
+ *            [--sweep] [--list] [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
  * a 320x200 view at the game's timer rate. The player's own behaviour isn't ported yet, so
@@ -10,7 +10,9 @@
  * behaviours are ported. PgUp / PgDn change level, O toggles the objects, Space pauses,
  * F12 saves shotNNN.png, Esc quits. With --screenshot it renders one view to a PNG without a
  * window, after running --ticks timer ticks (default 0) with the camera at --pos.
- * --player moves the player (its hotspot, map pixels) before the level starts running. */
+ * --player moves the player (its hotspot, map pixels) before the level starts running;
+ * --sweep moves it from there to the map's right edge during the run, with the view following
+ * (a quick way to wake every object in a level); --list prints every object at the end. */
 #include "archive.h"
 #include "engine.h"
 #include "gfx.h"
@@ -34,7 +36,7 @@ typedef struct {
     bool player;
     long ticks;
     const char *screenshot;
-    bool no_objects;
+    bool no_objects, sweep, list;
 } options_t;
 
 static bool parse_args(int argc, char **argv, options_t *o)
@@ -50,6 +52,10 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->player = sscanf(argv[++i], "%d,%d", &o->px, &o->py) == 2;
         else if (!strcmp(a, "--ticks") && i + 1 < argc)
             o->ticks = atol(argv[++i]);
+        else if (!strcmp(a, "--sweep"))
+            o->sweep = true;
+        else if (!strcmp(a, "--list"))
+            o->list = true;
         else if (!strcmp(a, "--no-objects"))
             o->no_objects = true;
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -143,7 +149,8 @@ int main(int argc, char **argv)
     options_t opt;
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
-                        "[--no-objects] [--ticks N] [--screenshot out.png]\n");
+                        "[--no-objects] [--ticks N] [--sweep] [--list] "
+                        "[--screenshot out.png]\n");
         return 2;
     }
 
@@ -179,11 +186,20 @@ int main(int argc, char **argv)
         follow_player(&lv, &cam_x, &cam_y);
 
     if (opt.screenshot) {
-        /* Run --ticks in frames of 8 ticks (about 70 frames a second) with a fixed camera. */
+        /* Run --ticks in frames of 8 ticks (about 70 frames a second) with a fixed camera, or
+         * with --sweep moving the player (and the view with it) across the map. */
+        const uint16_t start_x = G.you ? G.you->x : 0;
         G.org_x = (uint16_t)cam_x;
         G.org_y = (uint16_t)cam_y;
-        for (long t = 0; t < opt.ticks; t += 8)
+        for (long t = 0; t < opt.ticks; t += 8) {
+            if (opt.sweep && G.you) {
+                G.you->x = (uint16_t)(start_x + (lv.cols * TILE - start_x) * t / opt.ticks);
+                follow_player(&lv, &cam_x, &cam_y);
+                G.org_x = (uint16_t)cam_x;
+                G.org_y = (uint16_t)cam_y;
+            }
             game_frame((uint16_t)(opt.ticks - t < 8 ? opt.ticks - t : 8));
+        }
         render(&view, &lv, cam_x, cam_y, !opt.no_objects);
         const int rc = save_png(opt.screenshot, &view, lv.palette);
         if (rc)
@@ -196,6 +212,15 @@ int main(int argc, char **argv)
                "%d fore, %d slow, %d off screen\n",
                lv.number, list.name[lv.number], lv.cols, lv.rows, cam_x, cam_y, opt.ticks,
                count[LIST_MAIN], count[LIST_FORE], count[LIST_SLOW], count[LIST_OFF]);
+        if (opt.list) {
+            static const char *const names[] = {"main", "fore", "slow", "off"};
+            for (int id = 0; id < LIST_COUNT; id++)
+                for (const obj_t *o = G.list[id]; o; o = o->next)
+                    printf("  %-4s prio %3d at %4u,%4u  animator %04x  xdir %u  gv %d %d %d %d "
+                           "%d %d\n",
+                           names[id], o->priority, o->x, o->y, o->animator, o->xdir, o->gv[0],
+                           o->gv[1], o->gv[2], o->gv[3], o->gv[4], o->gv[5]);
+        }
         game_end();
         level_free(&lv);
         surface_free(&view);

@@ -208,7 +208,7 @@ bool obj_onscreen(const obj_t *o)
 /* ------------------------------------------------------------------------------------------ */
 /* Collision (MOVE.C): flag bits in the background map                                         */
 
-static uint16_t bg_cell(unsigned row, unsigned col)
+uint16_t map_cell(unsigned row, unsigned col)
 {
     const unsigned i = (uint16_t)(row * G.lv->cols + col);
     return i < (unsigned)(G.lv->rows * G.lv->cols) ? G.lv->bg[i] : 0;
@@ -218,6 +218,41 @@ static uint8_t fg_cell(unsigned row, unsigned col)
 {
     const unsigned i = (uint16_t)(row * G.lv->cols + col);
     return i < (unsigned)(G.lv->rows * G.lv->cols) ? G.lv->fg[i] : 0;
+}
+
+static uint16_t bg_cell(unsigned row, unsigned col)
+{
+    return map_cell(row, col);
+}
+
+bool obj_overlap(const obj_t *a, const obj_t *b)
+{
+    return a->x < (uint16_t)(b->x + b->xsize - 1) && b->x < (uint16_t)(a->x + a->xsize - 1) &&
+           a->y < (uint16_t)(b->y + b->ysize - 1) && b->y < (uint16_t)(a->y + a->ysize - 1);
+}
+
+void player_up(uint8_t n)
+{
+    if (G.you)
+        G.you->y = (uint16_t)(G.you->y - n);
+}
+
+void player_down(uint8_t n)
+{
+    if (G.you)
+        G.you->y = (uint16_t)(G.you->y + n);
+}
+
+void player_left(uint8_t n)
+{
+    if (G.you)
+        G.you->x = (uint16_t)(G.you->x - n);
+}
+
+void player_right(uint8_t n)
+{
+    if (G.you)
+        G.you->x = (uint16_t)(G.you->x + n);
 }
 
 /* The cells an edge of the object spans; never 0 (the original would run 65536 times). */
@@ -542,4 +577,10 @@ void enemy_hit(obj_t *o, uint8_t damage)
 {
     (void)o;
     (void)damage;
+}
+
+void spike_check(obj_t *o, uint8_t up)
+{
+    (void)o;
+    (void)up;
 }

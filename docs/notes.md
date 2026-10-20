@@ -256,12 +256,26 @@ wrapping, or ping-ponging if `AnimInc` is set) and only changes `ImageID`. Some 
 at 0000:0000 (the interrupt table); the port uses an empty frame. `FRANDOM(n)` is
 `rand() * n / 0x8000` with Borland's `rand` (seed * 0x015a4e35 + 1, bits 16-30).
 
+**Platforms** (RXPLAT.C) move through `GenericVar[5]`: an animator sets bits 1 up, 2 down,
+4 left, 8 right, and `MAINTAINPLATFORM` moves the platform a pixel each way and the player
+with it if the player rides it (bit 0x20, set when the player's feet land within its top 8
+pixels; the player gets `SurfaceFlags` bit 1, so CANMOVE leaves it alone). Bit 0x10 means it
+can't be ridden. Pulley platforms (info `p<dir><dist><pulley>`) find their pulleys by
+priority: the platform's priority is the pulleys' + 10, and they set the pulleys' `xSpeed` to
+turn them. Debris (type 0x0e) jumps with GENERICBEGINJUMP and lands through DOPROJECTILE.
+
+**The jump** (GENERICBEGINJUMP → GENERICJUMP → GENERICUP → GENERICBEGINFALL): GENERICJUMP
+counts `GenericVar[4]` down and keeps `ySpeed` constant (it subtracts 0xb4 that GENERICUP adds
+back); then GENERICUP decelerates. Moving up with a negative speed, the step is when
+`yPart += ySpeed` doesn't carry.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a
 cell the object's left edge would enter has 0x400, `CANGORIGHT` 0x200, `CANGOUP` 0x1000 and
 `CANGODOWN` 0x800 (each checks every cell along that edge, and only when the edge is on a
-tile boundary).
+tile boundary). Bit 0x2000 marks tiles the player can grab (gems, secrets): after each player
+move, MOVE.C checks the cells entered and calls `_Grabber` (GRABSTUFF) for those.
 
 **Tile types.** After the object list each `.led` holds three word tables: 512 for the
 background tiles (by `BgMap & 0x1ff`), 128 for the foreground tiles and 128 for the bonus
