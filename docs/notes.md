@@ -62,6 +62,32 @@ at the wrong addresses in Ghidra.
 What the debug info doesn't cover: the ~90 runtime-library helpers without public names
 (they stay `FUN_…`), and register variables (SI/DI); those are listed in the plate comment.
 
+## Data files
+
+`ROC.DAT` is a plain **LHA archive**: 466 files with level-1 headers, 464 compressed with
+`-lh5-` and 2 stored (`-lh0-`), ending in a zero byte. The game reads it with Haruhiko Okumura's
+ar002 decoder (`HUF.C`, `DECODE.C`, `MAKETBL.C`; `AREAD` reads `_origsize` bytes in 8 KB
+chunks and checks the CRC-16). `tools/rocdat.py` lists it, or extracts every file into
+`extracted/` and checks each CRC:
+
+```
+python tools/rocdat.py game/ROC.DAT extracted
+```
+
+| Ext    | Count | What it is (first look)                                                  |
+|--------|-------|---------------------------------------------------------------------------|
+| `.voc` | 185   | Creative Voice sound effects                                              |
+| `.spr` | 140   | sprite sets; start with their own file name (`arrow.spr`)                 |
+| `.led` | 42    | levels (e.g. `cas2easy.led`), one per difficulty; begin with a 768-byte palette |
+| `.bg`  | 22    | 131,072-byte background tile graphics                                     |
+| `.mbg` / `.mfg` | 14 each | background / foreground maps per area                        |
+| `.mid` | 18    | standard MIDI music                                                       |
+| `.txt` | 12    | story and help text with `{n}` colour codes                              |
+| `.pal` | 8     | 768-byte VGA palettes (6-bit components)                                  |
+| `.vga` | 5     | full screens: 768-byte palette, then 320×200 mode 13h pixels              |
+| `.bin` | 3     | 80×25 text-mode screens (character + attribute), e.g. `rocreg.bin`        |
+| other  | 3     | `roc1warp.008/.009` (warp coordinates?), `text.old`                       |
+
 Source modules (from the line-number table): the game is `RX*.C` plus `rocxms.asm`,
 `rocport.asm` and `rocfile.asm`; the engine is `SPRITE.C`, `MOVE.C`, `ANIMTILE.C`,
 `LOADLEV.C`, `KBD3.C`, `TIMER.C`, `XMS.C`, `EMS.C` and the `DRW*.ASM` blitters;
