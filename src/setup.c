@@ -55,6 +55,86 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[4] = 0xBE;
         o->gv[5] = 0x0F;
         break;
+    case 0x05: /* a segment of the whip */
+        o->animator = A_DOWHIP;
+        o->priority = 0xDD;
+        o->frame_no = 0;
+        break;
+    case 0x06: /* a fireball */
+        o->flags |= OF_RATE;
+        o->surface_flags &= 0xFE;
+        o->xspeed = 32000;
+        o->counter = 0;
+        o->animator = A_DOFIREBALL;
+        o->priority = 0xDC;
+        o->max_frames = 2;
+        o->frame_count_max = 0x0E;
+        o->anim_inc = 0;
+        o->update = 0x1000;
+        o->gv[3] = 0;
+        break;
+    case 0x09: /* the gem counter: a gem, four digits */
+        o->animator = A_DOGEMNUMBER;
+        o->max_frames = 3;
+        o->frame_count_max = 5;
+        o->priority = 0xFC;
+        o->update = 0x1000;
+        break;
+    case 0x0A: /* a drop of blood */
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0xF0;
+        o->surface_flags &= 0xFE;
+        o->gv[5] = 0x0F;
+        break;
+    case 0x0D: /* explosion, sparks, a splash of blood */
+        o->flags |= OF_RATE;
+        o->animator = A_DOEXPLOSION;
+        o->xspeed = 2000;
+        o->priority = (int16_t)(frandom(2) + 0xE6);
+        o->gv[0] = 1;
+        break;
+    case 0x0F: /* the hit points display. (The original indexes HitPoints with _GameFlags & 4,
+                * so for the male it reads the inventory's Flags byte; INITLEVEL then sets 0.) */
+        o->animator = A_DOHITPOINTS;
+        o->priority = 0xFC;
+        o->update = 0x1000;
+        o->gv[0] = (int16_t)(((G.game_flags & 4) ? Inv.flags : Inv.hit_points[0]) + 0x14);
+        break;
+    case 0x12: /* drops the player's gems after a hit */
+        o->animator = A_DROPGEMSPAWNER;
+        o->priority = 100;
+        o->gv[0] = 0;
+        break;
+    case 0x13: /* a gem (or other prize) flying to the counter */
+        o->animator = A_DOFLYINGSHIT;
+        o->priority = 6;
+        o->gv[1] = 0;
+        break;
+    case 0x14: /* a dropped prize: falls, bounces, waits to be picked up */
+        o->animator = A_GENERICBEGINFALL;
+        o->priority = 0xE5;
+        o->frame_count_max = 0x12;
+        o->gv[0] = o->gv[1] = o->gv[2] = o->gv[3] = o->gv[5] = 0;
+        o->anim_inc = 0;
+        o->yspeed = 0;
+        break;
+    case 0x21: /* spawns sparks or blood over a while */
+        o->flags |= OF_RATE;
+        o->xspeed = 0x960;
+        o->priority = 0x67;
+        o->animator = A_EXPLODERSPAWNER;
+        break;
+    case 0x24: /* spawns debris, blood, poison or sparks (the caller sets SPLASHSPAWNER) */
+        o->priority = 0x96;
+        o->gv[0] = o->gv[1] = o->gv[2] = o->gv[3] = o->gv[4] = 0;
+        break;
+    case 0x58: /* a splat of blood on the ground */
+        o->flags |= OF_RATE;
+        o->animator = A_DOBLOOD;
+        o->priority = 0x1C;
+        o->xspeed = 0x1E0;
+        o->gv[5] |= 1;
+        break;
     case 0x08: /* the camera (SCREENCENTER; some levels have their own) */
         o->flags |= OF_RATE;
         o->animator = A_SCREENCENTER;

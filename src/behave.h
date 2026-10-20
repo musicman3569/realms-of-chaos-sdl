@@ -1,5 +1,6 @@
 /* Object behaviours (Animator functions), one file per original module: rxgenerl.c
- * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C).
+ * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C),
+ * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -36,6 +37,17 @@ int generic_jump(obj_t *o);
 int generic_up(obj_t *o);
 int do_projectile(obj_t *o);
 int do_container(obj_t *o);
+int enemy_hit_pause(obj_t *o);
+int do_explosion(obj_t *o);
+int exploder_spawner(obj_t *o);
+int splash_spawner(obj_t *o);
+int do_collectable(obj_t *o);
+
+/* engine.c (RXTIMERF.C) */
+int off_killer(obj_t *o);
+
+/* rxgems.c */
+int do_flying_shit(obj_t *o);
 
 /* rxforest.c */
 int do_leaf(obj_t *o);
@@ -76,6 +88,21 @@ int you_climb(obj_t *o);
 int you_climb_move(obj_t *o);
 int you_begin_scramble(obj_t *o);
 int you_scramble(obj_t *o);
+int you_begin_shoot(obj_t *o);
+int you_shoot(obj_t *o);
+int do_fireball(obj_t *o);
+int you_begin_whip(obj_t *o);
+int you_whip(obj_t *o);
+int do_whip(obj_t *o);
+int you_hit(obj_t *o);
+int you_begin_impale(obj_t *o);
+int you_die(obj_t *o);
+int you_crush(obj_t *o);
+int you_drown(obj_t *o);
+int drop_gem_spawner(obj_t *o);
+int do_hit_points(obj_t *o);
+int do_gem_number(obj_t *o);
+int do_blood(obj_t *o);
 int screen_center(obj_t *o);
 
 #endif

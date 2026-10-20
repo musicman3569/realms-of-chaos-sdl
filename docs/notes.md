@@ -306,10 +306,99 @@ crouching), and back to the 50-high zone. Some levels have their own camera
 (CRUSHERCENTER, DRAGONCENTER, BOSSCENTER, DEMONCENTER). PROCESSLEVEL scrolls up / down while
 the look key is held with up / down (or PgUp / PgDn).
 
-**Grabbing.** After each player move, MOVE.C calls `_Grabber` (GRABSTUFF) for every cell
-entered that has bit 0x2000. GRABSTUFF acts on the cell's tile type: 0x74 secret, 0x71 a
-gem, 0x67 the level exit (`_quitflag` 3), 0x65 a hazard, and 0x6d, 0x68, 0x69, 0x70, 0x72,
-0x73 (not decoded yet). Pits have bit 0x4000 in their bottom rows, with 0x2000 in the last.
+**Grabbing.** After each player move, MOVE.C calls `_Grabber` (GRABSTUFF, RXGRABF.C) for
+every cell entered that has bit 0x2000. GRABSTUFF looks at three tile types: the background
+tile's, the bonus tile's (foreground byte bit 7 clear) and the foreground tile's (bit 7 set).
+Some checks require bit 7 clear, some don't care (ported as decompiled):
+
+| Type      | What                                                                        |
+|-----------|-----------------------------------------------------------------------------|
+| 10-19     | castle1 / castle2 warps to `_WarpCoords[type-10]` (`roc1warp.008` / `.009`: (x, y) words); `_quitflag` 6 |
+| 0x74      | a secret: clears bit 0x2000, `_SecretFound++`                               |
+| 0x71/0x72 | a gem / big gem (5): the bonus tile (on levels 11-12 the whole cell) is cleared; a DOFLYINGSHIT flies it to the counter |
+| 0x73      | 1 in 100: a noise, and the bit is cleared                                   |
+| 0x6d      | stakes: YOUBEGINIMPALE sinks the player to `_Vine_y` (reused), then YOUDIE |
+| 0x65      | water or a bottomless pit: FYOUDROWN                                        |
+| 0x67      | the exit (`_quitflag` 3), unless attacking or recovering from a hit         |
+| 0x70      | back to the level's start (with a message window; `_quitflag` 6)            |
+| 0x75/0x6e | spikes (foreground tiles): a free hit (`_FreeHit`); 0x6e with blood         |
+| 0x68/0x69 | spawn a bolo-throwing cat / a frog (up to `_MaxMonsterNumber` at a time)    |
+
+Which warp file each castle level reads isn't explicit (READITEM takes an item number), but
+castle1 uses types 10-15 and castle2 10-12, matching the 6 and 3 pairs in `.008` / `.009`.
+
+## Damage, attacks and the inventory
+
+**Inventory** (`_YouInventory`, DS:554b, `INVENTORY`): Score (u32), Gems, MaxHitPoints[2],
+HitPoints[2], WeaponStatus[2], and a bit-field word: Poisoned1 (bit 0, the male), Poisoned2
+(bit 1), WeaponPower1 (bits 2-3, the whip) and WeaponPower2 (bits 4-5, fireballs). The arrays
+are indexed by `(_GameFlags & 4) != 0`: 0 the female, 1 the male. NEWLEVELSETUP copies score,
+gems and the maximum hit points to `_Old*`, which a death restores. Gems are also the
+female's ammunition: each fireball costs one.
+
+**LEVELTIMER** (RXTIMERF.C) is a timer NEWLEVEL installs with a rate of 0x24 ticks (RUNTIMERS
+runs it at most once a frame: about 16 times a second). It counts down `_hitagain` (the
+protection after a hit; meanwhile the player bleeds drops of blood) and the player's
+GenericVar[0] (the attack's recovery: 10 a run while the attack key is up, else 1), and gives
+spawned objects (no `Flags` 4) parked in the off-screen list the animator OFFKILLER.
+
+**OBJCOLLIDE** compares the frames' hit boxes (`HitCols/Rows/Xoff/Yoff`, mirrored like the
+image: `x - ((HitCols - BoxCols) + HitXoff)`), x signed and y unsigned; OBJOVERLAP uses the
+objects' box sizes instead. **OBJBLINK(objp, blinks, on, off)** sets Blinks, BlinkCt = DrawOn
+= on and DrawOff = off. The list drawer counts BlinkCt down each frame and steps Blinks at 0;
+while Blinks is odd the object is drawn all in `BlinkColor` (`_DrawColorSprite`...).
+
+**HITPLAYER** (RXGENERL.C:416): unless `_GameFlags` 8 (recovering) or `_hitagain`, and if the
+objects collide (or `_FreeHit` is set), the player loses a hit point (two when `_DiffMode` > 2),
+`_hitagain` becomes 11, blood bursts where the blow lands (an explosion of kind 3) and, unless
+climbing or on the easiest difficulty, `_GameFlags` |= 8, a DROPGEMSPAWNER spills up to 5
+gems, and the player is knocked back: `xSpeed` 10000 against the facing, `ySpeed` -14000,
+GENERICBEGINJUMP. GENERICUP / GENERICFALL call YOUHIT for priority 0xe6 (drifting sideways),
+GENERICDOWN lands it with YOUBEGINSTUN (170 ticks with flag 8), and YOUCROUCH then clears the
+flag and sets `_hitagain` again. With no hit points left the landing goes to YOUDIE
+(`_quitflag` 4); PROCESSLEVEL counts 100 frames and starts the level again. SPIKECHECK
+(RXFRSTF.C) is HITPLAYER with blood, for spikes; a spiked wall only blocks.
+
+**The whip** (male): FYOUBEGINWHIP sets `_GameFlags` 2 and the arm's timing (`_WhippingFCM`
+78 / 60 / 51 calls a frame by WeaponPower1; recovery 0x19 / 0x14 / 0x0f). WHIPPINGFRAME
+shows the arm's frames 1, 2, 1. As frame 2 starts, FYOUWHIP spawns the segments (type 5,
+DOWHIP), 16 pixels apart from the hand: 3 for the first whip (Sword1ID), 5 for the others,
+none past a wall cell (0x200 / 0x400). `_SwordIndex` (DS:19df) holds each power's three
+animation frames. A segment touching a hittable object (`Flags` 0x10, without 2) adds 3
+(4 with the strongest whip) to its GenericVar[3], sets `Flags` 2 and makes sparks or blood;
+DS:553a / 553b list the objects (at most 3) one crack has hit. Each behaviour checks `Flags`
+2 and calls ENEMYHIT(objp, MaxHits).
+
+**Fireballs** (female): FYOUBEGINSHOOT picks the pose (standing, in the air, climbing,
+crouching; up / down held) and FYOUSHOOT throws one if a WeaponStatus slot is free and there's
+a gem, then holds the pose 75 calls. DOFIREBALL (type 6) flies a pixel a run in direction
+GenericVar[1] (1 up, 2 down, 3 left, 4 right; its jump table also maps 13 / 14 to falling
+left / right), adds 1 to the GenericVar[3] of what it overlaps, and bursts (DOEXPLOSION) on a
+wall, off screen or on a hit. Stronger fire adds one or two followers (GenericVar[2] 1 / 2,
+moving 30 / 60 ticks later). GenericVar[2] 3-5 are enemies' fireballs, which hurt the player.
+
+**ENEMYHIT** (RXGENERL.C:904): below MaxHits the object flinches (ENEMYHITPAUSE: one tick,
+shoved 5 / 7 pixels away from the player but not off a ledge). Otherwise it dies: a sample by
+priority, an EXPLODERSPAWNER (sparks or blood over its box for twice its height in ticks),
+OFFKILLER, and a prize (type 0x14, priority 0xe5, CollectID[GenericVar[1]]): a statue's own
+(its GenericVar[0]; 0x1c-0x20 are the priced magic items), else `FRANDOM(0x1b)`: 0 poison
+(only on the hard difficulties), 1-4 a potion, 5-15 a coin, 16-26 bigger coins. The bosses
+(priorities 0x3c, 0x47, 0x4a, 0x4c, 0x66) have their own deaths. DOCOLLECTABLE bounces the
+prize once and lets the player pick it up (DOFLYINGSHIT flies it to the corner and counts it:
+coins 50-1000 points, gems 1 / 5, a potion 2 hit points and the cure, poison one hit point and
+poisoned); after about 1000 ticks it blinks 13 times and goes.
+
+**Effects.** DOEXPLOSION (type 0xd): six frames of ExplodeID from 0 (kinds 0 / 2; 2 hurts),
+6 (1 / 4: sparks) or 12 (3: blood); on the fifth it may start a SPLASHSPAWNER (type 0x24),
+which throws GenericVar[1] + 1 bits of debris, blood, poison or sparks from the top, left or
+right of its box in turn (DS:38c2). Blood drops (type 0xa) land as DOBLOOD splats. Most
+invisible spawners use `Sword3ID[0]`, a one-pixel frame, as their image.
+
+**Status display** (INITLEVEL, when `_StatusOn`): DOHITPOINTS (type 0xf, `_HitPts`) shows
+HpID[base + hit points] (base 0, 5, 12 or 21 for a maximum of 4, 6, 8 or 10) in the view's top
+left corner; it blinks on the last hit point and while poisoned, and poison costs a hit point
+at each of the player's blinks. Four DOGEMNUMBER digits (GemNumID) and a spinning gem show
+the gem count.
 
 ## Tiles: types and collision
 
@@ -326,7 +415,5 @@ bytes after them are still unread. `CANMOVE` (RXGENERL.C:264) uses the low byte 
 under the middle of an object's feet: 200-212 are slopes whose surface height per pixel
 column is `_slope[k - 200][16]` (DGROUP:00df); it sets `UpOffset` (standing below the
 slope's surface) and `DownOffset` (1: can fall, 11: the surface is one pixel below).
-GRABSTUFF (RXGRABF.C) reacts to other values: 0x74 is a secret, which it clears by masking
-bit 13 of the cell, and 0x71 is used too. On levels 5 and 6, values 10 to 20 are warps into
-`_WarpCoords`.
+GRABSTUFF (RXGRABF.C) reacts to other values (see "Grabbing" above).
 

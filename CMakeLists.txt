@@ -19,6 +19,8 @@ add_executable(roc
     src/rxplat.c
     src/rxcave.c
     src/rxyou.c
+    src/rxgems.c
+    src/rxgrab.c
     src/png.c
 )
 

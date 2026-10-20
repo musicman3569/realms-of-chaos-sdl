@@ -42,6 +42,8 @@ void spriteset_free(spriteset_t *set);
  * Index 0 bytes in the stream are drawn like any other colour; only skipped rows are
  * transparent. */
 void draw_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool flip);
+/* _DrawColorSprite / _RevColorSprite: every pixel drawn in one colour (blinking). */
+void draw_sprite_color(surface_t *s, const sprite_t *sp, int x, int y, bool flip, uint8_t color);
 
 /* _DrawSolidBlock: a 16x16 background tile, 256 bytes in Mode X plane order. */
 void draw_tile(surface_t *s, const uint8_t *tile, int x, int y);

@@ -37,15 +37,36 @@ int do_arrow_sign(obj_t *o)
     return 0;
 }
 
-/* RXGENERL.C:1203 DOCONTAINER: a statue. Hit, it breaks into pieces and (after three hits)
- * shows its other frame; the hit part waits for the player. A statue that lands after a
- * fast fall (GenericVar[1] reset to 0) bounces twice. */
+/* RXGENERL.C:1203 DOCONTAINER: a statue. Each hit knocks four pieces off (DS:01af); after
+ * three (ENEMYHIT with 3) it shows its broken frame, drops its prize and can't be hit any
+ * more. A statue that lands after a fast fall (GenericVar[1] reset to 0) bounces twice. */
 int do_container(obj_t *o)
 {
+    static const int16_t smash[4][4] = {
+        {24, 8, 6000, -5000}, {24, 16, 4000, -500}, {8, 8, -4000, -5000}, {8, 16, -6000, -500}};
     if (G.you && obj_overlap(o, G.you) && G.message_on)
         G.game_flags |= 0x40;
     if (o->flags & OF_HIT) {
-        /* smashing (4 pieces, ENEMYHIT, the broken image): not ported yet */
+        play_sample(0x83, NULL);
+        for (int i = 0; i < 4; i++) {
+            obj_t *p = spawn_obj(0x0E, LIST_MAIN, G.img[IMG_PIECES], (uint16_t)(o->x + smash[i][0]),
+                                 (uint16_t)(o->y + smash[i][1]));
+            p->gv[0] = 0;
+            p->gv[3] = 0x5A;
+            p->xdir = smash[i][2] > 0;
+            p->xspeed = iabs16(smash[i][2]);
+            p->yspeed = smash[i][3];
+        }
+        enemy_hit(o, 3);
+        if (o->gv[3] > 2) {
+            play_sample(0x84, NULL);
+            if (G.you && G.you->x < o->x)
+                o->xdir = 1;
+            obj_image(o, G.img[IMG_STATUE + 1]);
+            o->flags &= ~OF_HITTABLE;
+            if (G.message_on)
+                G.game_flags |= 0x40;
+        }
         o->flags &= 0xFD;
     }
     if (o->animator == A_DOCONTAINER) {
@@ -74,9 +95,15 @@ static void own_behaviour(obj_t *o, bool falling)
     case 2:
         do_container(o);
         return;
-    case 0x3A: case 0x3B: case 0x3C: case 0xE6: case 0xE5: case 0x35: case 0x33: case 0x39:
+    case 0xE6:
+        you_hit(o);
+        return;
+    case 0xE5:
+        do_collectable(o);
+        return;
+    case 0x3A: case 0x3B: case 0x3C: case 0x35: case 0x33: case 0x39:
     case 0x66: case 0x49: case 0x47: case 0x97: case 0x3E: case 0x4A:
-        return; /* DOBOMB, ROSSPIECE, ROSSJUMP, YOUHIT, ...: not ported yet */
+        return; /* DOBOMB, ROSSPIECE, ROSSJUMP, ...: not ported yet */
     case 0x4E: case 100: case 0x31: case 0xE7:
         if (falling)
             return; /* DOCATSKELETON, DODROP, ROCKMONSTERFALL: not ported yet */
@@ -103,8 +130,10 @@ static void generic_down(obj_t *o)
     if ((G.level == 8 || G.level == 9) &&
         (uint16_t)(G.lv->rows * 16 - 0x21) < (uint16_t)(o->y + o->ysize)) {
         /* fell into the swamp */
-        if (o == G.you)
-            return; /* FYOUDROWN: not ported */
+        if (o == G.you) {
+            you_drown(o);
+            return;
+        }
         if (o->priority != 0x35) {
             obj_kill(o);
             return;
@@ -133,7 +162,7 @@ static void generic_down(obj_t *o)
     case 0x3A: o->animator = A_DOBOMB; break;
     case 0x3B: o->animator = A_ROSSPIECE; break;
     case 0x3C: play_sample(0x75, o); o->animator = A_ROSSATTACK; break;
-    case 0xE6: break; /* YOUBEGINSTUN: not ported */
+    case 0xE6: you_begin_stun(o); break;
     case 0xE5: o->animator = A_DOCOLLECTABLE; break;
     case 2: o->animator = A_DOCONTAINER; break;
     case 0x4E: o->animator = A_DOCATSKELETON; break;
@@ -300,17 +329,486 @@ int do_projectile(obj_t *o)
     }
     if (o->gv[5] & 1) {
         /* landed */
-        if (o->gv[0] == 5 && G.level < 3) {
-            o->gv[0] = 3;
-            o->animator = A_DOBIRD; /* the splat */
-            o->counter = 0;
-            play_sample(0x5C, NULL);
-            return 0;
+        if (o->gv[0] == 3) {
+            /* a knife (or poison) splashes */
+            if (o->image == G.img[IMG_POISON])
+                play_sample(0x86, NULL);
+            obj_t *p = spawn_obj(0x24, LIST_FORE, o->image, o->x, (uint16_t)(o->y - 4));
+            p->gv[1] = 2;
+            p->gv[2] = 2;
+            p->animator = A_SPLASHSPAWNER;
+        } else if (o->gv[0] == 2) {
+            /* a drop of blood leaves a splat (DOBLOOD) */
+            o->gv[2] = o->gv[2] == 0 ? 10 : o->gv[2] < 3 ? 9 : o->gv[2] < 4 ? 8 : 7;
+            obj_image(o, G.img[IMG_BLOOD + o->gv[2]]);
+            spawn_obj(0x58, LIST_MAIN, o->image, o->x, o->y)->gv[2] = o->gv[2];
+        } else {
+            if (o->gv[0] == 5 && G.level < 3) {
+                o->gv[0] = 3;
+                o->animator = A_DOBIRD; /* the splat */
+                o->counter = 0;
+                play_sample(0x5C, NULL);
+                return 0;
+            }
+            if (o->gv[0] == 5) {
+                play_sample(0x83, NULL);
+            } else if (o->gv[0] == 6) {
+                /* a falling spike sticks in the ground */
+                play_sample(0x83, NULL);
+                o->flags |= OF_RATE;
+                if (G.level == 0x19) {
+                    o->xspeed = 0x5DC;
+                    o->gv[0] = 0x75;
+                    o->gv[1] = 0;
+                    o->counter = 0;
+                    o->animator = A_DOCAVEHOLE;
+                    obj_image(o, G.img[IMG_DEMSPIK + 1]);
+                } else {
+                    obj_image(o, G.img[IMG_FALLSPIK + 1]);
+                    o->animator = A_NULLANIMATOR;
+                    o->xspeed = 0x100;
+                }
+                o->flags &= 0xFB;
+                return 0;
+            }
         }
-        if (o->gv[0] == 5)
-            play_sample(0x83, NULL);
-        /* 2 (gems), 3 (knives) and 6 (spikes) leave something behind; not ported yet. */
         obj_kill(o);
     }
+    return 0;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Damage                                                                                      */
+
+/* RXGENERL.C:416 HITPLAYER: an enemy (or a hazard, with _FreeHit) touches the player. Unless
+ * the player is protected (_hitagain counting down, recovering, invincible), take a hit point
+ * (two on the hardest difficulties), splash blood, and knock the player back with a jump
+ * (GENERICBEGINJUMP; YOUHIT steers it and the landing stuns) while dropping gems. On a vine,
+ * or on the easiest difficulty, the player only blinks. */
+int hit_player(obj_t *o)
+{
+    obj_t *you = G.you;
+    if ((G.game_flags & 8) || G.hitagain) {
+        G.free_hit = 0;
+        return 0;
+    }
+    if (!you || G.quitflag || you->animator == A_YOUDIE || G.you_invincible ||
+        (!G.free_hit && !obj_collide(o, you)))
+        return 0;
+    G.hitagain = 0x0B;
+    G.free_hit = 0;
+    uint8_t *hp = you_hp();
+    const bool m = (G.game_flags & 4) != 0;
+    if (*hp)
+        (*hp)--;
+    if (G.diff_mode > 2 && *hp)
+        (*hp)--;
+    if (*hp == 0)
+        play_sample(m ? 0xB1 : 0xB0, NULL);
+    else
+        play_sample(m ? 0xA8 : 0xA7, you);
+    if (G.blood_on) {
+        /* where the blow lands: the enemy's near edge, at its middle, inside the player */
+        uint16_t x = you->x < o->x ? (uint16_t)(o->x + o->xsize) : o->x;
+        uint16_t y = (uint16_t)(o->y + (o->ysize >> 1));
+        if (x < you->x)
+            x = you->x;
+        if ((uint16_t)(you->x + 0x0E) < x)
+            x = (uint16_t)(you->x + 0x0E);
+        if (y < you->y)
+            y = you->y;
+        if ((uint16_t)(you->y + you->ysize) < y)
+            y = (uint16_t)(you->y + you->ysize);
+        spawn_obj(0x0D, LIST_MAIN, G.img[IMG_EXPLODE + 12], (uint16_t)(x - 6),
+                  (uint16_t)(y - 6))->gv[0] = 3;
+    }
+    if ((you->animator == A_YOUCLIMB || G.diff_mode == 0) && *hp) {
+        if (G.diff_mode == 0)
+            G.game_flags &= 0xFFF7;
+        if (!G.blood_on) {
+            you->blink_color = 0x2E;
+            obj_blink(you, 0x19, 3, 3);
+        }
+    } else {
+        G.game_flags |= 8;
+        spawn_obj(0x12, LIST_SLOW, G.img[IMG_SWORD3], (uint16_t)(you->x + 8),
+                  (uint16_t)(you->y + 8));
+        you->xspeed = you->xdir == 0 ? 10000 : -10000;
+        you->yspeed = -14000;
+        you->gv[4] = 0x5A;
+        generic_begin_jump(you);
+    }
+    return 0;
+}
+
+/* RXGENERL.C:904 ENEMYHIT: the player's weapon hit an object (its GenericVar[3] counts the
+ * damage: 3 or 4 a crack of the whip, 1 a fireball). Below MaxHits it just flinches
+ * (ENEMYHITPAUSE); then it dies in a splash (EXPLODERSPAWNER) and drops a prize: a statue
+ * its own (GenericVar[0]), others a random one. On the easiest difficulty one hit kills. */
+void enemy_hit(obj_t *o, uint8_t max_hits)
+{
+    const int16_t pr = o->priority;
+    uint8_t dropped = 0;
+    if (pr != 0x3C && pr != 2 && pr != 0x66 && pr != 0x47 && pr != 0x4A && pr != 0x4C &&
+        G.diff_mode == 0)
+        max_hits = 1;
+    if (o->gv[3] < max_hits) {
+        o->flags &= 0xFD;
+        o->old_animator = o->animator;
+        o->animator = A_ENEMYHITPAUSE;
+        G.hit_release = 0;
+        return;
+    }
+    if (pr != 2)
+        G.enemy_found++;
+    if (pr == 0x3C || pr == 0x66 || pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
+        return; /* the bosses' deaths: not ported yet */
+    if (pr == 2) {
+        o->old_animator = o->animator;
+        o->animator = A_ENEMYHITPAUSE;
+        dropped = (uint8_t)o->gv[0];
+        G.statue_found++;
+    } else {
+        play_sample(pr == 0x36 || pr == 0x29 ? 0x86 : pr == 0x4E ? 0x92 : pr == 0x32 ? 0x8B
+                    : pr == 0x34 ? 0x7D : pr == 0x96 ? 0x73 : pr == 0x35 ? 0x88 : 0x87, NULL);
+        obj_t *b = spawn_obj(0x21, LIST_FORE, o->image, (uint16_t)(o->x - 5),
+                             (uint16_t)(o->y - 5));
+        b->image = G.img[IMG_SWORD3];
+        b->gv[0] = (int16_t)(o->ysize << 1);
+        if (pr == 0x29) {
+            b->gv[1] = 1;
+            obj_t *p = spawn_obj(0x24, LIST_FORE, G.img[IMG_SWORD3], o->x, o->y);
+            p->xsize = o->xsize;
+            p->ysize = o->ysize;
+            p->gv[0] = 0;
+            p->gv[1] = (int16_t)(o->ysize >> 1);
+            p->gv[2] = 2;
+            p->animator = A_SPLASHSPAWNER;
+        } else if (pr == 0x4E) {
+            b->gv[1] = 1; /* (and the cat skeleton's eleven bones: not ported yet) */
+        } else if (!(G.game_flags & 4) || pr == 0x34 || pr == 0x96 || pr == 0x4A ||
+                   !G.blood_on) {
+            b->gv[1] = 1; /* sparks */
+        } else {
+            b->gv[1] = 3; /* blood */
+        }
+        o->animator = A_OFFKILLER;
+    }
+    if (pr == 0x36 || pr == 0x4A)
+        return;
+    obj_t *c = spawn_obj(0x14, LIST_MAIN, G.img[IMG_COLLECT],
+                         (uint16_t)(o->x + (o->xsize >> 1) - 8),
+                         (uint16_t)(o->y + (o->ysize >> 1) - 8));
+    if (dropped == 0) {
+        dropped = (uint8_t)frandom(0x1B);
+        if ((dropped == 0 && G.diff_mode < 3) || dropped == 1)
+            dropped = 2;
+        if (G.diff_mode == 4 && (dropped == 2 || dropped == 3))
+            dropped = 5;
+    }
+    if (dropped == 0x20 && fire_power() > 2)
+        dropped = 1;
+    /* The prize: CollectID[GenericVar[1]] and its animation. */
+    if (dropped == 0) {
+        c->gv[1] = 0x0D; /* poison */
+        c->max_frames = 2;
+        c->frame_count_max = 0x3C;
+    } else if (dropped == 1) {
+        c->gv[1] = 0x19;
+        c->anim_inc = 1;
+        c->max_frames = 2;
+        c->frame_count_max = 0x1E;
+    } else if (dropped <= 4) {
+        c->gv[1] = 10; /* a potion */
+        c->max_frames = 2;
+        c->frame_count_max = 0x3C;
+    } else if (dropped < 0x10) {
+        c->gv[1] = 0; /* a coin */
+        c->max_frames = 9;
+    } else if (dropped <= 0x15) {
+        c->gv[1] = 0x11;
+        c->max_frames = 0;
+    } else if (dropped <= 0x18) {
+        c->gv[1] = 0x1C;
+        c->max_frames = 0;
+    } else if (dropped <= 0x1A) {
+        c->gv[1] = 0x10;
+        c->max_frames = 0;
+    } else if (dropped == 0x1B) {
+        c->gv[1] = 0x16;
+        c->max_frames = 2;
+        c->frame_count_max = 0x3C;
+    } else if (dropped <= 0x20) {
+        /* the magic items a statue may hold */
+        static const int8_t magic[] = {0x21, 0x23, 0x25, 0x27, 0x29};
+        c->gv[1] = magic[dropped - 0x1C];
+        c->max_frames = 1;
+        c->frame_count_max = 0x32;
+        c->flags |= OF_PLACED;
+    }
+    c->image = G.img[IMG_COLLECT + c->gv[1]];
+    c->xspeed = 0;
+}
+
+/* RXGENERL.C:1154 ENEMYHITPAUSE: one tick of flinching: shoved up to 5 (female) / 7 (male)
+ * pixels away from the player, then back to the old animator. */
+int enemy_hit_pause(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (o == G.boss && you) {
+        if (you->x < (uint16_t)(G.org_x + 5)) {
+            you->x = (uint16_t)(G.org_x + 5);
+            you->xspeed = 0;
+        } else if ((uint16_t)(G.org_x + 0x13B) < you->x) {
+            you->x = (uint16_t)(G.org_x + 0x13B);
+            you->xspeed = 0;
+        }
+        if (G.level == 10 && you->x > 0x164) {
+            you->x = 0x164;
+            you->xspeed = 0;
+        }
+    }
+    bool neck = false;
+    for (int i = 0; i < 4; i++)
+        neck = neck || o == G.neck[i];
+    if (you && (o != G.boss || G.boss->priority == 0x4A) && !neck && o->priority != 0x96 &&
+        o->priority != 0x29) {
+        bool grounded = false;
+        const int n = (G.game_flags & 4) ? 7 : 5;
+        for (int i = 0; i < n; i++) {
+            can_move(o);
+            if (!can_go_down(o))
+                grounded = true;
+            if (o->up_offset > 10 && can_go_up(o))
+                o->y = (uint16_t)(o->y - (o->up_offset - 10));
+            if (o->down_offset > 10)
+                o->y = (uint16_t)(o->y + (o->down_offset - 10));
+            if (you->x < o->x && can_go_right(o) && room_right(o)) {
+                o->x++;
+                if (grounded && can_go_down(o))
+                    o->x--; /* not off a ledge */
+            } else if (o->x < you->x && can_go_left(o) && room_left(o)) {
+                o->x--;
+                if (grounded && can_go_down(o))
+                    o->x++;
+            }
+        }
+    }
+    o->counter--;
+    o->animator = o->old_animator;
+    return 0;
+}
+
+/* RXGENERL.C:76 DOEXPLOSION: six frames of ExplodeID: from 0 (GenericVar[0] 0 or 2: an
+ * explosion; 2 also hurts the player), 6 (1, 4: sparks) or 12 (3: blood). On the fifth some
+ * kinds throw out debris, sparks or blood (SPLASHSPAWNER). */
+int do_explosion(obj_t *o)
+{
+    if (++o->frame_no == 6) {
+        obj_kill(o);
+        return 0;
+    }
+    obj_t *p;
+    const int kind = o->gv[0];
+    if (kind == 1 || kind == 4) {
+        obj_image(o, G.img[IMG_EXPLODE + 6 + o->frame_no]);
+        if (kind != 4 || o->frame_no != 4)
+            return 0;
+        p = spawn_obj(0x24, LIST_FORE, G.img[IMG_EXPLODE + 4], o->x, o->y);
+        p->image = G.img[IMG_SWORD3];
+        p->gv[1] = 2;
+        p->gv[2] = 3;
+    } else if (kind != 3) {
+        obj_image(o, G.img[IMG_EXPLODE + o->frame_no]);
+        if (o->frame_no == 4) {
+            p = spawn_obj(0x24, LIST_FORE, G.img[IMG_EXPLODE + 4], o->x, o->y);
+            p->image = G.img[IMG_SWORD3];
+            p->gv[1] = 3;
+            p->gv[2] = 3;
+            p->animator = A_SPLASHSPAWNER;
+        }
+        if (kind == 2)
+            hit_player(o);
+        return 0;
+    } else {
+        obj_image(o, G.img[IMG_EXPLODE + 12 + o->frame_no]);
+        if (o->frame_no != 4)
+            return 0;
+        p = spawn_obj(0x24, LIST_FORE, G.img[IMG_EXPLODE + 17], o->x, o->y);
+        p->image = NULL;
+        p->gv[1] = 5;
+        p->gv[2] = 1;
+    }
+    p->animator = A_SPLASHSPAWNER;
+    return 0;
+}
+
+/* RXGENERL.C:50 EXPLODERSPAWNER: for GenericVar[0] ticks, sparks (GenericVar[1] 1) or blood
+ * (3) burst at random points of its box; 4 follows the player. */
+int exploder_spawner(obj_t *o)
+{
+    if (o->gv[1] == 4 && G.you) {
+        o->x = (uint16_t)(G.you->x - 5);
+        o->y = (uint16_t)(G.you->y - 5);
+    }
+    if (o->counter < (uint16_t)o->gv[0]) {
+        const sprite_t *f = G.img[IMG_EXPLODE + (o->gv[1] == 3 ? 12 : 6)];
+        const uint16_t x = (uint16_t)(o->x + frandom(o->xsize));
+        const uint16_t y = (uint16_t)(o->y + frandom(o->ysize));
+        spawn_obj(0x0D, LIST_MAIN, f, x, y)->gv[0] = o->gv[1];
+    } else {
+        obj_kill(o);
+    }
+    return 0;
+}
+
+/* RXGENERL.C:1362 SPLASHSPAWNER: throws out GenericVar[1] + 1 bits by kind (GenericVar[2]):
+ * 0 debris, 1 blood, 2 poison, 3 sparks; from the top, the left or the right of its box in
+ * turn (DS:38c2). */
+int splash_spawner(obj_t *o)
+{
+    obj_t *p;
+    switch (o->gv[2]) {
+    case 0:
+        p = spawn_obj(0x0E, LIST_MAIN, G.img[IMG_CAVEDROP + frandom(4)], o->x, o->y);
+        p->gv[0] = 0;
+        break;
+    case 1: {
+        uint16_t k = frandom(5);
+        if (k == 5)
+            k = 0;
+        p = spawn_obj(0x0A, LIST_MAIN, G.img[IMG_BLOOD + k], o->x, (uint16_t)(o->y - 9));
+        p->gv[0] = 2;
+        p->gv[1] = 0;
+        p->gv[2] = (int16_t)k;
+        break;
+    }
+    case 2:
+        p = spawn_obj(0x0E, LIST_MAIN, G.img[IMG_POISON + 3], o->x, o->y);
+        p->gv[0] = 4;
+        break;
+    case 3:
+        p = spawn_obj(0x0E, LIST_MAIN, G.img[IMG_SPARKS], o->x, (uint16_t)(o->y - 9));
+        if (G.splash_side == 2) {
+            p->xspeed = 0;
+            p->yspeed = -15000;
+        } else {
+            p->xspeed = 7000;
+            p->yspeed = 0;
+        }
+        p->gv[4] = 0x5A;
+        G.splash_side = frandom(3);
+        goto side;
+    default:
+        return 0;
+    }
+    p->xspeed = 0;
+    p->yspeed = 0;
+    p->gv[4] = 0x3C;
+side:
+    if (++G.splash_side == 3)
+        G.splash_side = 0;
+    if (G.splash_side == 0) {
+        p->x = (uint16_t)(p->x + frandom(o->xsize));
+        p->yspeed = (int16_t)(p->yspeed - 5000);
+        p->gv[4] += 0x1E;
+    } else {
+        if (G.splash_side == 2)
+            p->x = (uint16_t)(p->x + o->xsize);
+        p->y = (uint16_t)(p->y + frandom(o->ysize));
+        p->xspeed = (int16_t)(p->xspeed + 6000);
+    }
+    p->xspeed = (int16_t)(p->xspeed + frandom(10000));
+    p->yspeed = (int16_t)(p->yspeed - frandom(4000));
+    p->xdir = (uint16_t)(p->x - o->x) < (o->xsize >> 1) ? 0 : 1;
+    if (o->gv[1] < ++o->gv[0])
+        obj_kill(o);
+    return 0;
+}
+
+/* RXGENERL.C:171 DOCOLLECTABLE: a dropped prize (CollectID[GenericVar[1]]). It bounces once
+ * when it lands; touching it collects it (DOFLYINGSHIT, priced magic items only with enough
+ * gems and on the ground); after about 1000 ticks it blinks 13 times and goes. */
+int do_collectable(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (o->image)
+        next_frame(o, IMG_COLLECT + o->gv[1]);
+    if (Inv.hit_points[0] == 0 || (uint16_t)(G.lv->rows * 16 - 0x11) < o->y || !you) {
+        obj_kill(o);
+        return 0;
+    }
+    if (obj_overlap(you, o) && !(G.game_flags & 8)) {
+        const int k = o->gv[1];
+        bool take = true;
+        if (k == 0x21 || k == 0x23 || k == 0x25 || k == 0x29) {
+            static const uint16_t msg[] = {0x200, 0x4000, 0x2000, 0x400};
+            const int i = k == 0x21 ? 0 : k == 0x23 ? 1 : k == 0x25 ? 2 : 3;
+            if (G.message_on)
+                G.game_flags |= msg[i];
+            take = (k == 0x21 ? Inv.gems > 0x18 : k == 0x23 ? Inv.gems > 0x0E
+                    : k == 0x25 ? Inv.gems > 0x18 : Inv.gems > 0x31 && fire_power() < 3) &&
+                   (you->gv[5] & 1);
+        }
+        if (take) {
+            spawn_obj(0x13, LIST_SLOW, G.img[IMG_COLLECT + k], o->x, o->y)->gv[0] = (int16_t)k;
+            int hint = 0;
+            if (k == 0 || k == 0x10 || k == 0x11 || k == 0x19 || k == 0x1C) {
+                hint = 1;
+                play_sample(0x69, NULL);
+            } else if (k == 10 || k == 0x16) {
+                hint = 2;
+                play_sample(0xA5, NULL);
+            } else if (k == 0x21 || k == 0x23 || k == 0x25) {
+                play_sample(0xA5, NULL);
+            } else if (k == 0x29) {
+                play_sample(0xB4, NULL);
+            } else if (k == 0x12) {
+                play_sample(0x67, NULL);
+            } else if (k == 0x0D) {
+                play_sample(0xA4, NULL);
+                if (G.message_on)
+                    G.game_flags |= 0x100;
+            }
+            if (hint == 1 && G.message_on)
+                G.game_flags |= 0x80;
+            else if (hint == 2 && G.message_on)
+                G.game_flags |= 0x20;
+            obj_kill(o);
+            return 0;
+        }
+    }
+    if (carry(&o->xpart, o->xspeed)) {
+        if (!can_go_right(o) || !room_right(o) || !can_go_left(o) || !room_left(o)) {
+            o->xspeed = 0;
+            return 0;
+        }
+        if (o->flags & 1)
+            o->x++;
+        else
+            o->x--;
+    }
+    if (!(o->gv[5] & 1))
+        return 0;
+    if (o->gv[2] == 0) {
+        o->gv[2]++;
+        o->yspeed = -5000;
+        o->xspeed >>= 1;
+        o->gv[4] = 100;
+        generic_begin_jump(o);
+        return 0;
+    }
+    o->xspeed = 0;
+    if (o->gv[1] > 0x20)
+        return 0;
+    if (++o->gv[2] < 0x3E9) {
+        if (o->gv[2] == 0x3CF)
+            o->image = G.img[IMG_SWORD3];
+        return 0;
+    }
+    o->gv[2] = 0x3B6;
+    o->image = G.img[IMG_COLLECT + o->frame_no + o->gv[1]];
+    if (++o->gv[3] >= 0x0D)
+        obj_kill(o);
     return 0;
 }

@@ -47,8 +47,18 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 - Editing: the Bash tool collapses `\\` in heredocs, so `\n` inside a Python edit script
   passed by heredoc breaks C strings. Write such scripts to a file first (or use the Edit
   tool). Keep files LF: Python on Windows writes CRLF unless opened with `newline=""`.
-- Testing: headless runs with `--hold`, `--player`, `--list` and `--sweep` (see Running);
-  compare traced positions and speeds with the decompiled constants (ticks are 582/s).
+- Testing: headless runs with `--hold`, `--player`, `--list`, `--trace` and `--sweep` (see
+  Running); compare traced positions and speeds with the decompiled constants (ticks are
+  582/s). `--female --gems N` tests the fireballs.
+- Disassembly: GhidraMCP's `GET /disassemble_function?address=SEG:OFF&offset=N&limit=1000`
+  pages through a function (check `has_more`). Use it for switch tables (`JMP CS:[BX+t]`; read
+  the table from the EXE), for `OBJIMAGE()` calls the decompiler shows without arguments, and
+  for the `rand()` maths (`PUSH 0; PUSH 8000h; CALL rand; ... MOV AX,n; CALL LXMUL` is
+  `FRANDOM(n)`).
+- Animator constants written as `_Img.XxxID + n` are DGROUP offsets too: `_Img` is at
+  DS:3a44 and the field offsets are in the tdinfo FIELD rows (`_Img.ChainID` = 0x3e54,
+  GENERICBEGINJUMP). OBJBLINK's Ghidra parameters are in reverse: the real call is
+  OBJBLINK(objp, blinks, on, off).
 
 ## Running
 
@@ -61,14 +71,18 @@ build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800
 build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold right:0-3000,jump:1000-1100 --screenshot out.png
 # headless test: move the player across the whole map; list every object at the end
 build/roc.exe game/ROC.EXE --level 1 --ticks 40000 --sweep --list --screenshot out.png
+# headless: the female with 10 gems throws fireballs; print the player's state every 80 ticks
+build/roc.exe game/ROC.EXE --level 0 --female --gems 10 --player 470,231 --ticks 3000 --hold attack:900-920 --trace 80 --screenshot out.png
 ```
 
 `ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
-arrows, Ctrl jump, Alt attack (not ported yet), Enter + up / down look. Viewer keys: [ and ]
+arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Enter + up /
+down look. Viewer keys: [ and ]
 change level, C free camera (the arrows move the view), O hides the objects, P pauses, F12
-saves `shotNNN.png`, Esc quits. Falling into a pit restarts the level (until death is
-ported). Objects whose behaviour isn't ported stay still, and each such animator is reported
-once on stderr. Headless runs print the player's position and animator at the end.
+saves `shotNNN.png`, Esc quits. Reaching the exit goes on to the next level; dying restarts
+the level 100 frames later (no menu or story screens yet). Objects whose behaviour isn't
+ported stay still, and each such animator is reported once on stderr. Headless runs print the
+player's position and animator, the inventory and the level's counters at the end.
 
 ## Completed
 
@@ -121,6 +135,23 @@ once on stderr. Headless runs print the player's position and animator at the en
   ledge, riding a pulley platform. Not yet: attacking (whip / fireballs), the special item,
   damage and death (HITPLAYER, YOUHIT, YOUDIE...), GRABSTUFF (gems, secrets, the level exit,
   hazards), looking up / down.
+- Port, grabbing, damage and attacks (notes, "Grabbing" and "Damage, attacks and the
+  inventory"): `src/rxgrab.c` GRABSTUFF (warps, secrets, gems, the exit, stakes, water and
+  pits, spikes, back-to-start); in `src/rxgenerl.c` HITPLAYER, ENEMYHIT, ENEMYHITPAUSE,
+  DOEXPLOSION, EXPLODERSPAWNER, SPLASHSPAWNER, DOCOLLECTABLE, statues being smashed and
+  DOPROJECTILE's landings (blood splats, knives, spikes); SPIKECHECK in `rxforest.c`;
+  `src/rxgems.c` DOFLYINGSHIT (scoring prizes); in `src/rxyou.c` the whip (FYOUBEGINWHIP,
+  FYOUWHIP, WHIPPINGFRAME, DOWHIP), fireballs (FYOUBEGINSHOOT, FYOUSHOOT, DOFIREBALL), YOUHIT,
+  YOUBEGINIMPALE, YOUDIE, YOUCRUSH, YOUDROWN, DROPGEMSPAWNER, the status display (DOHITPOINTS,
+  DOGEMNUMBER) and DOBLOOD; the attack keys in the player's states. `src/engine.c`: the
+  inventory (`Inv`, kept from level to level), OBJCOLLIDE, OBJBLINK and blinking drawing,
+  LEVELTIMER and OFFKILLER, the castle warp tables. `src/main.c`: PROCESSLEVEL's `_quitflag`
+  3 / 4 / 6. Verified headless: a bandit's club and a bat each take a hit point, knock the
+  player back, stun on landing and leave 11 timer runs of protection; the whip (3 segments)
+  and fireballs (a gem each) kill a bandit, which drops a prize; gems are counted on the
+  display; the forest1 exit leads to level 1 with the inventory; the stakes impale and the
+  caves' water drowns, then the level restarts; a castle1 warp moves the player. Every level
+  runs 20,000 ticks with both characters attacking during a sweep.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -128,23 +159,23 @@ once on stderr. Headless runs print the player's position and animator at the en
 
 ## Next steps
 
-1. **Grabbing, damage and attacks** (next): GRABSTUFF (gems, secrets, level exit, hazards,
-   warps; the tile types in notes "Grabbing"), HITPLAYER / SPIKECHECK / YOUHIT / YOUDIE /
-   YOUCRUSH (and the inventory's hit points, blinking), the attacks (FYOUBEGINWHIP / WHIP /
-   WHIPPINGFRAME and DOWHIP for the male, FYOUBEGINSHOOT / SHOOT and DOFIREBALL for the
-   female) and ENEMYHIT, so enemies can be fought; then PROCESSLEVEL's looking and the status
-   display. The decompiles are easiest to read from GhidraMCP's HTTP backend:
-   `http://127.0.0.1:8080/decompile?name=FYOUWHIP`.
-2. **More behaviours**, a module at a time; a `--sweep` run lists the animators a level
+1. **More behaviours** (next), a module at a time; a `--sweep` run lists the animators a level
    reaches that aren't ported. By how many levels need them: DOGARGOYLE (10), DOCAVEHOLE (5),
    GOBLINSTAND, DOBOAR, MUDMANWALK, DOCAVESPIDER, DOCAVEFALLSPIKES, then the rest.
    `tools/animators.py` maps object types to animators.
-3. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
+   Left over from the damage milestone: the special item (key 6, spawn type 0x37 /
+   DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
+   for a weapon upgrade, which is applied without it), MAINTAINBLOCK (spiked walls block),
+   GRABSTUFF's spawners (bolo cats 0x68, frogs 0x69, goblin2's snake platform), the cat
+   skeleton's bones in ENEMYHIT, the bosses' deaths, PROCESSLEVEL's looking up / down, XLEVEL
+   (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:
+   `http://127.0.0.1:8080/decompile?name=DOTRANSFORMER`.
+2. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
    `PROCESSLEVEL`. Objects are `OBJstruct` (48 bytes) whose `Animator` field is a near pointer
    to a behaviour function (`DOGARGOYLE`, `YOURUN`...). Every behaviour decompiles readably
    now.
-4. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
+3. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
    `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
    are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
-5. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
+4. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
    (Apogee Sound System; VOC effects and MIDI music).

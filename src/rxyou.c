@@ -4,11 +4,14 @@
  * GenericVar[5] bits: 1 on the ground, 2 falling, 4 jumping, 8 the jump key has been released
  * (so holding it doesn't jump again), 0x10 holds the special item. _GameFlags: 1 climbing,
  * 2 attacking (whip / fireball in progress), 4 the male character, 8 recovering from a hit.
- * The female character shoots fireballs, the male uses the whip.
+ * The female character shoots fireballs, the male uses the whip. GenericVar[0] is the
+ * attack's recovery (LEVELTIMER counts it down).
  *
- * Not ported yet: attacking (YOUBEGINSHOOT / YOUBEGINWHIP), the special item (key 6),
- * damage and death (YOUHIT, YOUDIE, YOUCRUSH, YOUDROWN...), blinking. */
+ * Not ported yet: the special item (key 6). */
 #include "behave.h"
+
+#include <stdio.h>
+#include <string.h>
 
 static bool male(void)
 {
@@ -203,8 +206,8 @@ int you_fall(obj_t *o)
     player_down(1, o);
     if ((G.level == 8 || G.level == 9) &&
         (uint16_t)(G.lv->rows * 16 - 0x21) < (uint16_t)(you->y + you->ysize) && you->image &&
-        G.hit_points[0])
-        return 0; /* FYOUDROWN: not ported */
+        Inv.hit_points[0])
+        return you_drown(o);
     return you_horiz(o);
 }
 
@@ -447,7 +450,12 @@ int you_horiz(obj_t *o)
             o->xspeed = 0;
         }
     }
-    /* (_GameFlags 2: FYOUSHOOT / FYOUWHIP, not ported yet.) */
+    if (G.game_flags & 2) {
+        if (male())
+            you_whip(o);
+        else
+            you_shoot(o);
+    }
     if (you->gv[0] < 10 && o->xspeed != 0 && male())
         you->gv[0] = 0;
 
@@ -501,7 +509,12 @@ int you_horiz(obj_t *o)
             return 0;
         }
     }
-    /* (The attack key starts FYOUBEGINSHOOT / FYOUBEGINWHIP: not ported yet.) */
+    if (key(K_ATTACK) && !(G.game_flags & 8) && G.wisp_walk == 0) {
+        if (!male() && you->gv[0] == 0)
+            return you_begin_shoot(o);
+        if (!(G.game_flags & 2) && male() && you->gv[0] < 10)
+            return you_begin_whip(o);
+    }
     return 0;
 }
 
@@ -547,7 +560,7 @@ int you_begin_stun(obj_t *o)
         you->gv[1] = 0xAA;
     }
     obj_image(o, img(G.you_duck, 0));
-    if (!G.hit_points[1] || !G.hit_points[0]) {
+    if (!Inv.hit_points[1] || !Inv.hit_points[0]) {
         o->y = (uint16_t)(o->y - 0x10);
         o->animator = A_YOUDIE;
     }
@@ -562,10 +575,20 @@ int you_crouch(obj_t *o)
     obj_t *you = G.you;
     if (you->gv[1] > 0)
         you->gv[1]--;
-    /* (blinking while recovering from a hit: not ported) */
+    if (!G.blood_on && (G.game_flags & 8) && o->blinks == 0) {
+        you->blink_color = 0x2E;
+        obj_blink(you, 0x19, 3, 3);
+    }
     if (you->gv[1] == 0) {
-        if (G.game_flags & 8)
+        if (G.game_flags & 8) {
+            /* up again after a hit: protected a while longer */
             G.game_flags &= 0xFFF7;
+            G.hitagain = 0x0B;
+            if (!G.blood_on) {
+                you->blink_color = 0x2E;
+                obj_blink(you, 0x19, 3, 3);
+            }
+        }
         if (!key(K_JUMP))
             you->gv[5] |= 8;
         if (!ceiling_over(o) && !platform_over(0x11)) {
@@ -605,7 +628,24 @@ int you_crouch(obj_t *o)
                 you->xdir = 1;
             }
         }
-        /* (attack and special item keys: not ported yet) */
+        if (key(K_ATTACK) && (G.wisp_walk != -1 || you->xdir) &&
+            (G.wisp_walk != 1 || !you->xdir)) {
+            if (!male() && you->gv[0] == 0) {
+                o->xspeed = 0;
+                return you_begin_shoot(o);
+            }
+            if (!(G.game_flags & 2) && male() && you->gv[0] < 10) {
+                o->xspeed = 0;
+                return you_begin_whip(o);
+            }
+        }
+        /* (the special item key: not ported yet) */
+    }
+    if (G.game_flags & 2) {
+        if (male())
+            you_whip(o);
+        else
+            you_shoot(o);
     }
     if (carry(&o->xpart, iabs16(o->xspeed))) {
         can_move(o);
@@ -714,6 +754,12 @@ int you_climb(obj_t *o)
 int you_climb_move(obj_t *o)
 {
     obj_t *you = G.you;
+    if (G.game_flags & 2) {
+        if (male())
+            you_whip(o);
+        else
+            you_shoot(o);
+    }
     if (o->yspeed < 0) {
         o->yspeed = (int16_t)(o->yspeed + (you->friction >> 1));
         if (o->yspeed > 0)
@@ -762,7 +808,14 @@ int you_climb_move(obj_t *o)
     }
     if ((!male() || you->gv[0] == 0) && !(G.game_flags & 2))
         obj_image(you, img(G.you_climb, you->frame_no));
-    /* (attack key: not ported yet) */
+    if (key(K_ATTACK)) {
+        if (!male()) {
+            if (you->gv[0] == 0)
+                return you_begin_shoot(o);
+        } else if (!(G.game_flags & 2) && you->gv[0] < 10) {
+            return you_begin_whip(o);
+        }
+    }
     return 0;
 }
 
@@ -817,6 +870,630 @@ int you_scramble(obj_t *o)
     if (you->gv[1] >= 1 && you->gv[1] <= 4)
         o->y = (uint16_t)(G.vine_y * 16 + (male() ? male_y : female_y)[you->gv[1]]);
     obj_image(o, img(G.you_climb, you->gv[1] + 6));
+    return 0;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Attacks                                                                                     */
+
+/* RXYOUF.C:752 FYOUBEGINSHOOT: the female's throwing pose for where she is and the keys held
+ * (crouching, climbing, standing, in the air; aiming up or down), then FYOUSHOOT. */
+int you_begin_shoot(obj_t *o)
+{
+    obj_t *you = G.you;
+    int base = G.you_attack, n;
+    G.whip_fc = 100;
+    if (o->ysize == 0x19) {
+        base = G.you_duck;
+        n = 3;
+    } else if (G.game_flags & 1) {
+        n = key(K_UP) ? 3 : key(K_DOWN) ? 4 : 2;
+    } else if (!(you->gv[5] & 1)) {
+        n = key(K_UP) ? 6 : key(K_DOWN) ? 7 : 5;
+    } else {
+        n = key(K_UP) ? 1 : 0;
+    }
+    obj_image(o, img(base, n));
+    G.game_flags |= 2;
+    you->gv[0] = 0x0C;
+    return you_shoot(o);
+}
+
+/* RXYOUF.C:786 FYOUSHOOT: the first call throws a fireball (if one of the two slots is free
+ * and there's a gem to pay with): sideways, up (standing, holding up) or down (in the air,
+ * holding down); a stronger fire adds one or two that follow it. Then the pose holds for 75
+ * calls. */
+int you_shoot(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (G.whip_fc < 100) {
+        if (--G.whip_fc == 0)
+            G.game_flags &= 0xFFFD;
+        return 0;
+    }
+    G.whip_fc = 'K';
+    int slot = 10, i = 0;
+    do {
+        if (!Inv.weapon_status[i])
+            slot = i;
+    } while (slot == 10 && ++i < 2);
+    if (slot == 10 || Inv.gems == 0)
+        return 0;
+    obj_t *f = spawn_obj(0x06, LIST_MAIN, G.img[IMG_FIREBALL], 0, 0);
+    f->gv[1] = 0;
+    if (!key(K_UP) || you->ysize != 0x29) {
+        if (!key(K_DOWN) || (you->gv[5] & 1)) {
+            f->x = you->xdir == 0 ? (uint16_t)(you->x - 0x0E) : (uint16_t)(you->x + 0x0C);
+            f->y = you->ysize == 0x19 ? (uint16_t)(you->y + 3) : (uint16_t)(o->y + 6);
+        } else {
+            f->x = (uint16_t)(you->x + 2);
+            f->y = (uint16_t)(you->y + 0x10);
+            f->gv[1] = 2; /* down */
+        }
+    } else {
+        f->x = you->xdir == 0 ? (uint16_t)(you->x + 2) : (uint16_t)(you->x - 2);
+        f->y = (uint16_t)(you->y - 9);
+        f->gv[1] = 1; /* up */
+    }
+    if (f->gv[1] == 0)
+        f->gv[1] = you->xdir == 0 ? 3 : 4; /* left, right */
+    const int16_t right = (int16_t)(G.lv->cols * 16 - 1), bottom = (int16_t)(G.lv->rows * 16 - 1);
+    if ((int16_t)f->x < 0x13)
+        f->x = 0x13;
+    else if ((int16_t)f->x > right)
+        f->x = (uint16_t)right;
+    if ((int16_t)f->y < 0x13)
+        f->x = 0x13; /* (sic) */
+    else if ((int16_t)f->y > bottom)
+        f->y = (uint16_t)bottom;
+    f->gv[0] = (int16_t)slot;
+    f->gv[2] = 0;
+    Inv.weapon_status[i] = 1;
+    play_sample(0x61, NULL);
+    Inv.gems--;
+    for (int k = 1; k <= 2; k++) {
+        if (fire_power() > (unsigned)k) {
+            obj_t *g = spawn_obj(0x06, LIST_MAIN, G.img[IMG_FIREBALL], f->x, f->y);
+            g->gv[0] = f->gv[0];
+            g->gv[1] = f->gv[1];
+            g->gv[2] = (int16_t)k;
+        }
+    }
+    return 0;
+}
+
+/* RXYOU.C:82 DOFIREBALL: a fireball (GenericVar[2] 0-2 the player's: the first, and the ones
+ * following it 30 and 60 ticks later; 3-5 an enemy's). It flies a pixel a run in direction
+ * GenericVar[1] (1 up, 2 down, 3 left, 4 right; 13 / 14 left / right while falling) and
+ * bursts on a wall, off screen, or on what it hits. */
+int do_fireball(obj_t *o)
+{
+    obj_t *you = G.you;
+    bool boom = false;
+    if (o->gv[3] == 0) {
+        o->gv[3]++;
+        const uint16_t w = map_cell(o->y >> 4, o->x >> 4) |
+                           map_cell((uint16_t)(o->y + o->ysize) >> 4,
+                                    (uint16_t)(o->x + o->xsize) >> 4);
+        boom = (w & 0x1E00) != 0; /* thrown into a wall */
+    }
+    if (!boom) {
+        if (!obj_onscreen(o)) {
+            if (o->gv[2] == 0) {
+                Inv.weapon_status[o->gv[0] & 1] = 0;
+                if (you)
+                    you->gv[0] = 9;
+            }
+            obj_kill(o);
+            return 0;
+        }
+        int x = 0;
+        const int k = o->gv[2];
+        if (k < 3) {
+            if (fire_power() == 2)
+                x = k == 0 ? 3 : 0;
+            else if (fire_power() != 1)
+                x = k == 0 ? 6 : k == 1 ? 3 : 0;
+        } else {
+            x = k == 3 ? 6 : k == 4 ? 3 : 0;
+        }
+        next_frame(o, IMG_FIREBALL + x);
+        if ((k == 1 || k == 4) && o->counter < 0x1E)
+            return 0;
+        if ((k == 2 || k == 5) && o->counter < 0x3C)
+            return 0;
+        can_move(o);
+        switch (o->gv[1]) {
+        case 1:
+            if (!can_go_up(o) || o->y < 3)
+                boom = true;
+            else
+                o->y--;
+            break;
+        case 2:
+            if (o->down_offset == 0 ||
+                (G.level == 0x0D && (uint16_t)(G.org_y + 0xC0) < (uint16_t)(o->y + o->ysize)))
+                boom = true;
+            else
+                o->y++;
+            break;
+        case 3: case 13: case 4: case 14:
+            if (o->gv[1] > 5) {
+                if (o->down_offset == 0)
+                    o->gv[1] -= 10;
+                else
+                    o->y++;
+            }
+            if (o->gv[1] == 3 || o->gv[1] == 13) {
+                if (can_go_left(o) && room_left(o))
+                    o->x--;
+                else
+                    boom = true;
+            } else {
+                if (can_go_right(o) && room_right(o))
+                    o->x++;
+                else
+                    boom = true;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    if (boom)
+        o->up_offset = 11;
+    if (o->gv[2] < 3) {
+        obj_t *nx;
+        for (obj_t *p = G.list[LIST_MAIN]; p; p = nx) {
+            nx = p->next;
+            if (obj_overlap(o, p) && (p->flags & OF_HITTABLE)) {
+                o->up_offset = 11;
+                p->gv[3]++;
+                p->flags |= OF_HIT;
+                p->blink_color = p->priority == 2 ? 0x1D : 0x2E;
+                if (p == G.boss)
+                    obj_blink(p, 2, 3, 3);
+                else
+                    obj_blink(p, 2, 5, 5);
+            }
+        }
+    } else if (you && obj_collide(you, o)) {
+        o->up_offset = 11;
+        hit_player(o);
+    }
+    if (o->up_offset <= 10)
+        return 0;
+    play_sample(0x62, NULL);
+    spawn_obj(0x0D, LIST_MAIN, G.img[IMG_EXPLODE], o->x, o->y)->gv[0] = 0;
+    if (o->gv[2] == 0) {
+        Inv.weapon_status[o->gv[0] & 1] = 0;
+        if (you)
+            you->gv[0] = 9;
+    }
+    obj_kill(o);
+    return 0;
+}
+
+/* _SwordIndex (DS:19df): the whip's three animation frames for each power, as _Img
+ * indexes: Sword1ID[0/3/6], Sword2ID[0/5/10], Sword3ID[0/5/10]. Each frame has a picture
+ * per segment (3 for the first whip, 5 for the others). */
+static const int sword_index[3][3] = {
+    {IMG_SWORD1, IMG_SWORD1 + 3, IMG_SWORD1 + 6},
+    {IMG_SWORD2, IMG_SWORD2 + 5, IMG_SWORD2 + 10},
+    {IMG_SWORD3, IMG_SWORD3 + 5, IMG_SWORD3 + 10},
+};
+
+static unsigned whip_level(void)
+{
+    const unsigned p = whip_power();
+    return p == 0 ? 1 : p;
+}
+
+/* RXYOUF.C:971 WHIPPINGFRAME: the arm's three frames, image[1], image[2], image[1], each held
+ * _WhippingFCM calls. */
+static void whipping_frame(int base)
+{
+    if (--G.whip_fc >= 1)
+        return;
+    G.whip_fc = G.whip_fcm;
+    G.whip_fn = (int8_t)(G.whip_fn + G.whip_ai);
+    if ((G.whip_ai < 0 && G.whip_fn == 0) || (G.whip_ai > 0 && G.whip_fn == 2))
+        G.whip_ai = (int8_t)-G.whip_ai;
+    G.you->image = img(base, G.whip_fn);
+}
+
+/* RXYOUF.C:874 FYOUBEGINWHIP: a crack of the whip; the stronger whips are quicker but need
+ * longer to recover (GenericVar[0]). */
+int you_begin_whip(obj_t *o)
+{
+    G.game_flags |= 2;
+    G.whip_fn = 0;
+    G.whip_ai = 1;
+    if (whip_power() == 1) {
+        G.whip_fcm = G.whip_fc = 'N';
+        G.you->gv[0] = 0x19;
+    } else if (whip_power() == 2) {
+        G.whip_fcm = G.whip_fc = '<';
+        G.you->gv[0] = 0x14;
+    } else {
+        G.whip_fcm = G.whip_fc = '3';
+        G.you->gv[0] = 0x0F;
+    }
+    return you_whip(o);
+}
+
+/* RXYOUF.C:897 FYOUWHIP: swing the arm; as it reaches out, lay the whip's segments (DOWHIP)
+ * 16 pixels apart in front of the player, short of any wall (cells with 0x200 / 0x400). */
+int you_whip(obj_t *o)
+{
+    obj_t *you = G.you;
+    const int base = o->ysize == 0x19 ? G.you_duck + 2
+                     : !(G.game_flags & 1) ? G.you_attack - 1 : G.you_attack + 1;
+    whipping_frame(base);
+    if (G.whip_fn == 2 && G.whip_fc == G.whip_fcm - 1) {
+        play_sample(0x81, o);
+        for (int g = 0; g < 5; g++) {
+            bool blocked = false;
+            uint16_t sx = you->xdir == 0 ? (uint16_t)(you->x - 0x17 - (4 - g) * 16)
+                                         : (uint16_t)(you->x + (4 - g) * 16 + 0x15);
+            const uint16_t y = you->ysize == 0x19 ? (uint16_t)(you->y + 6)
+                                                  : (uint16_t)(you->y + 0x0E);
+            if ((uint16_t)(G.lv->cols * 16 - 1) < sx) {
+                if (g < 4)
+                    blocked = true;
+                else
+                    sx = 0;
+            }
+            if (g < 4 && !blocked) {
+                if (you->xdir == 0) {
+                    for (uint16_t u = sx; u < you->x; u = (uint16_t)(u + 16))
+                        if ((map_cell((uint16_t)(y + 6) >> 4, (uint16_t)(u - 8) >> 4) |
+                             map_cell((uint16_t)(y + 10) >> 4, (uint16_t)(u - 8) >> 4)) & 0x600)
+                            blocked = true;
+                } else {
+                    for (uint16_t u = sx; you->x < u; u = (uint16_t)(u - 16))
+                        if ((map_cell((uint16_t)(y + 6) >> 4, (uint16_t)(u + 8) >> 4) |
+                             map_cell((uint16_t)(y + 10) >> 4, (uint16_t)(u + 8) >> 4)) & 0x600)
+                            blocked = true;
+                }
+            }
+            int frame = sword_index[whip_level() - 1][0] + g;
+            if (whip_level() == 1) {
+                if (g > 1)
+                    frame -= 2;
+                else
+                    blocked = true; /* the first whip has three segments */
+            }
+            if (!blocked) {
+                obj_t *w = spawn_obj(0x05, LIST_MAIN, G.img[frame], sx, y);
+                w->xdir = you->xdir;
+                w->gv[0] = (int16_t)g;
+                w->frame_count_max = w->frame_count = (uint16_t)(G.whip_fcm / 3);
+            }
+        }
+    } else if (G.whip_fn == 1 && G.whip_ai == -1) {
+        G.game_flags &= 0xFFFD;
+    }
+    return 0;
+}
+
+/* RXYOU.C:238 DOWHIP: a segment of the whip (GenericVar[0] 0 the tip .. 4 by the hand). It
+ * stays in front of the player, goes through its three frames, and hits (ENEMYHIT counts 3,
+ * or 4 with the strongest whip) whatever hittable thing it touches, up to three objects a
+ * crack (DS:553a). Segments that aren't out yet (Sword2ID[0/1], Sword3ID[0/1]) don't hit. */
+int do_whip(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (!you) {
+        obj_kill(o);
+        return 0;
+    }
+    bool seen = false;
+    const int g = o->gv[0];
+    o->x = you->xdir == 0 ? (uint16_t)(you->x - 0x17 - (4 - g) * 16)
+                          : (uint16_t)(you->x + (4 - g) * 16 + 0x15);
+    if ((uint16_t)(G.lv->cols * 16 - 1) < o->x) {
+        if (g < 4) {
+            o->x = 100;
+            obj_kill(o);
+            return 0;
+        }
+        o->x = 0;
+    }
+    o->xdir = you->xdir;
+    o->y = you->ysize == 0x19 ? (uint16_t)(you->y + 6) : (uint16_t)(you->y + 0x0E);
+    if (g < 4 && ((map_cell((uint16_t)(o->y + 6) >> 4, (uint16_t)(o->x + 8) >> 4) |
+                   map_cell((uint16_t)(o->y + 10) >> 4, (uint16_t)(o->x + 8) >> 4)) & 0x600)) {
+        obj_kill(o);
+        return 0;
+    }
+    if (--o->frame_count == 0) {
+        if (o->frame_no == 3) {
+            Inv.weapon_status[0] = 0;
+            obj_kill(o);
+            memset(G.whip_hits, 0, sizeof G.whip_hits);
+            G.whip_hit_count = 0;
+            return 0;
+        }
+        const int frame = sword_index[whip_level() - 1][o->frame_no] +
+                          (whip_level() == 1 ? g - 2 : g);
+        obj_image(o, G.img[frame]);
+        o->frame_count = o->frame_count_max;
+        o->frame_no++;
+    }
+    if (G.whip_hit_count == 3 || o->image == G.img[IMG_SWORD2] ||
+        o->image == G.img[IMG_SWORD2 + 1] || o->image == G.img[IMG_SWORD3] ||
+        o->image == G.img[IMG_SWORD3 + 1])
+        return 0;
+    obj_t *nx;
+    for (obj_t *p = G.list[LIST_MAIN]; p; p = nx) {
+        nx = p->next;
+        /* (once an object already hit turns up, `seen` stays set for the rest of the list) */
+        for (int i = 0; i < G.whip_hit_count; i++)
+            if (G.whip_hits[i] == p)
+                seen = true;
+        if (!obj_collide(o, p) || !(p->flags & OF_HITTABLE) || (p->flags & OF_HIT) || seen)
+            continue;
+        G.whip_hits[G.whip_hit_count++] = p;
+        const uint16_t ex = (uint16_t)(o->x + frandom(o->xsize));
+        const uint16_t ey = (uint16_t)(o->y + frandom(o->ysize));
+        obj_t *e = spawn_obj(0x0D, LIST_MAIN, G.img[IMG_EXPLODE + 12], ex, ey);
+        const int16_t pr = p->priority;
+        if (pr == 0x34 || pr == 0x96 || pr == 2 || pr == 0x31 || pr == 0x47 || pr == 0x4E ||
+            pr == 0x4A || pr == 0x29 || pr == 0x39 || !G.blood_on) {
+            /* sparks, and the thing blinks */
+            obj_image(e, G.img[IMG_EXPLODE + 6]);
+            e->gv[0] = 1;
+            p->blink_color = pr == 2 ? 0x1D : 0x2E;
+            if (p == G.boss)
+                obj_blink(p, 2, 3, 3);
+            else
+                obj_blink(p, 2, 5, 5);
+        } else {
+            e->gv[0] = 3; /* blood */
+        }
+        p->gv[3] = (int16_t)(p->gv[3] + (whip_power() == 3 ? 4 : 3));
+        p->flags |= OF_HIT;
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Hurt and dying                                                                              */
+
+/* RXYOUF.C:1235 FYOUHIT: knocked back (HITPLAYER's jump; GENERICUP / GENERICFALL call this
+ * every tick): keep protected and drift away from the blow, except past the view's edge on
+ * the levels whose view doesn't follow. */
+int you_hit(obj_t *o)
+{
+    can_move(o);
+    const uint16_t old = o->xpart;
+    o->xpart = (uint16_t)(o->xpart + iabs16(o->xspeed));
+    if (old < o->xpart)
+        return 0;
+    G.hitagain = 0x0B;
+    if (!G.blood_on && o->blinks == 0) {
+        G.you->blink_color = 0x2E;
+        obj_blink(G.you, 0x19, 3, 3);
+    }
+    if (o->xspeed == 0)
+        return 0;
+    const uint8_t lv = G.level;
+    const bool fixed = lv == 1 || lv == 3 || lv == 10 || lv == 0x10 || lv == 0x13 ||
+                       lv == 0x14 || lv == 0x16 || lv == 0x19;
+    if (o->xdir == 0 && can_go_right(o) && room_right(o) && o->down_offset < 10 &&
+        o->up_offset < 10 && (!fixed || o->x <= (uint16_t)(G.org_x + 0x12D))) {
+        player_right(1, o);
+        return 0;
+    }
+    if (o->xdir != 0 && can_go_left(o) && room_left(o) && o->down_offset < 10 &&
+        o->up_offset < 10 && (!fixed || (uint16_t)(G.org_x + 5) <= o->x))
+        player_left(1, o);
+    return 0;
+}
+
+/* RXYOUF.C:1274 FYOUBEGINIMPALE: on a spike (GRABSTUFF, tile type 0x6d): sink to _Vine_y,
+ * then die. */
+int you_begin_impale(obj_t *o)
+{
+    G.center_off = 'V';
+    o->animator = A_YOUBEGINIMPALE;
+    if (carry(&o->xpart, 10000)) {
+        if (G.vine_y < o->y)
+            o->y--;
+        else if (o->y < G.vine_y)
+            o->y++;
+    }
+    if (o->counter > 0x28 && o->y == G.vine_y)
+        o->animator = A_YOUDIE;
+    return 0;
+}
+
+/* RXYOUF.C:1295 FYOUDIE: the body; PROCESSLEVEL restarts the level a while later
+ * (_quitflag 4). */
+int you_die(obj_t *o)
+{
+    G.hitagain = 0;
+    obj_image(o, G.img[IMG_BOTHDEAD + ((G.game_flags & 4) ? 1 : 0)]);
+    obj_blink(G.you, 0, 0, 0);
+    if (G.hit_pts)
+        G.hit_pts->blinks = 0;
+    o->animator = A_NULLANIMATOR;
+    Inv.hit_points[0] = Inv.hit_points[1] = 0;
+    G.center_off = 'f';
+    G.quitflag = 4;
+    return 0;
+}
+
+/* RXYOUF.C:1320 FYOUCRUSH: crushed (by a crusher or a falling block): gone in a burst of
+ * blood. */
+int you_crush(obj_t *o)
+{
+    if (G.you && G.you->animator != A_NULLANIMATOR && Inv.hit_points[0]) {
+        play_sample((G.game_flags & 4) ? 0xAD : 0xAB, NULL);
+        if (G.blood_on) {
+            obj_t *b = spawn_obj(0x21, LIST_MAIN, G.img[IMG_SWORD3], (uint16_t)(o->x - 5),
+                                 (uint16_t)(o->y - 5));
+            b->xsize = o->xsize;
+            b->ysize = o->ysize;
+            b->gv[1] = 3;
+            b->gv[0] = (int16_t)o->ysize;
+            b = spawn_obj(0x24, LIST_FORE, G.img[IMG_SWORD3], o->x, o->y);
+            b->gv[0] = 0;
+            b->gv[1] = 0x19;
+            b->gv[2] = 1;
+            b->animator = A_SPLASHSPAWNER;
+            b->xsize = o->xsize;
+            b->ysize = o->ysize;
+        }
+        o->image = G.img[IMG_SWORD3];
+        o->animator = A_NULLANIMATOR;
+        Inv.hit_points[0] = Inv.hit_points[1] = 0;
+        G.center_off = 'f';
+        G.you->blinks = 0;
+        if (G.hit_pts)
+            G.hit_pts->blinks = 0;
+    }
+    G.quitflag = 4;
+    return 0;
+}
+
+/* RXYOUF.C:1359 FYOUDROWN: into water or a bottomless pit (GRABSTUFF tile type 0x65, the
+ * swamp's bottom): a splash, and gone. */
+int you_drown(obj_t *o)
+{
+    play_sample(0x72, NULL);
+    obj_t *s = spawn_obj(0x24, LIST_FORE, G.you ? G.you->image : NULL, (uint16_t)(o->x + 7),
+                         (uint16_t)(o->y + 10));
+    s->image = NULL;
+    s->gv[0] = 0;
+    s->gv[1] = 0x10;
+    s->gv[2] = 0;
+    s->animator = A_SPLASHSPAWNER;
+    o->image = G.img[IMG_SWORD3];
+    o->animator = A_NULLANIMATOR;
+    Inv.hit_points[0] = Inv.hit_points[1] = 0;
+    G.center_off = 'f';
+    if (G.you)
+        G.you->blinks = 0;
+    if (G.hit_pts)
+        G.hit_pts->blinks = 0;
+    G.quitflag = 4;
+    return 0;
+}
+
+/* RXYOUF.C:1385 FDROPGEMSPAWNER: after a hit, up to five of the player's gems spill out
+ * (DOCOLLECTABLE) where there's room, one a frame. */
+int drop_gem_spawner(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (Inv.gems == 0 || o->gv[0] == 5 || !you) {
+        obj_kill(o);
+        return 0;
+    }
+    const uint16_t x0 = (uint16_t)(you->x + frandom(0x1E));
+    const uint16_t y0 = (uint16_t)(you->y + frandom(0x10));
+    const uint16_t x = (uint16_t)(x0 - 8), y = (uint16_t)(y0 + 8);
+    const uint16_t x2 = (uint16_t)(x0 + 8), y2 = (uint16_t)(y0 + 0x18);
+    const uint16_t w = map_cell(y >> 4, x >> 4) | map_cell(y2 >> 4, x2 >> 4) |
+                       map_cell(y2 >> 4, x >> 4) | map_cell(y >> 4, x2 >> 4);
+    if (w & 0x1E00)
+        return 0;
+    Inv.gems--;
+    o->gv[0]++;
+    obj_t *c = spawn_obj(0x14, LIST_MAIN, G.img[IMG_COLLECT + 0x12], x, y);
+    c->max_frames = 3;
+    c->frame_count_max = 0x28;
+    c->xspeed = (int16_t)frandom(10000);
+    c->yspeed = (int16_t)(-1000 - frandom(9000));
+    c->gv[1] = 0x12;
+    c->gv[4] = 0x78;
+    c->animator = A_GENERICBEGINJUMP;
+    c->xdir = (uint8_t)frandom(2);
+    return 0;
+}
+
+/* RXYOUF.C:1439 FDOHITPOINTS: the hit points display (HpID, by the maximum: 4, 6, 8 or 10)
+ * in the view's top left corner. It blinks on the last hit point and while poisoned, and
+ * poison takes a hit point at each of the player's blinks. */
+int do_hit_points(obj_t *o)
+{
+    obj_t *you = G.you;
+    uint8_t *hp = you_hp();
+    const bool m = (G.game_flags & 4) != 0;
+    const bool poisoned = (Inv.flags & (m ? 1 : 2)) != 0;
+    o->x = (uint16_t)(G.org_x + 8);
+    o->y = (uint16_t)(G.org_y + 7);
+    if (*hp == 1 || poisoned) {
+        if (o->blinks == 0) {
+            o->blink_color = poisoned ? 0x53 : 0x2E;
+            obj_blink(o, 0x32, 3, 6);
+        }
+        if (poisoned && you && you->blinks == 0) {
+            you->blink_color = 0x53;
+            obj_blink(you, 0x32, 3, 6);
+            if (!G.hitagain && *hp) {
+                play_sample(0xA4, NULL);
+                if (--*hp == 0) {
+                    G.free_hit = 1;
+                    *hp = 2;
+                    hit_player(o);
+                }
+            }
+        }
+    }
+    if (*hp != o->gv[0]) {
+        o->gv[0] = *hp;
+        static const struct { uint8_t max; int base; } sets[] = {{4, 0}, {6, 5}, {8, 12}, {10, 21}};
+        for (int i = 0; i < 4; i++)
+            if (Inv.max_hit_points[m] == sets[i].max)
+                o->image = img(IMG_HP + sets[i].base, o->gv[0]);
+    }
+    if (!G.status_on) {
+        obj_kill(o);
+        G.hit_pts = NULL;
+    }
+    return 0;
+}
+
+/* RXYOU.C:409 DOGEMNUMBER: the gem counter under the hit points: GenericVar[0] 0-3 a digit of
+ * the count (GemNumID, left aligned), 4 the spinning gem. Nothing shows without gems. */
+int do_gem_number(obj_t *o)
+{
+    if (o->gv[0] < 4) {
+        o->x = (uint16_t)(G.org_x + o->gv[0] * 8 + 0x11);
+        o->y = (uint16_t)(G.org_y + 0x10);
+    } else {
+        o->x = (uint16_t)(G.org_x + 4);
+        o->y = (uint16_t)(G.org_y + 0x0C);
+    }
+    if (!G.status_on) {
+        obj_kill(o);
+    } else if (Inv.gems == 0) {
+        o->image = G.img[IMG_SWORD3];
+    } else if (o->gv[0] < 4) {
+        if (o->counter > 4) {
+            o->counter = 0;
+            char digits[8];
+            snprintf(digits, sizeof digits, "%u", (unsigned)Inv.gems);
+            const char c = (size_t)o->gv[0] < strlen(digits) ? digits[o->gv[0]] : 0;
+            o->image = c ? G.img[IMG_GEMNUM + (c - '0')] : G.img[IMG_SWORD3];
+        }
+    } else {
+        next_frame(o, IMG_COLLECT + 0x12);
+    }
+    return 0;
+}
+
+/* RXYOU.C:463 DOBLOOD: a splat of blood drying up (BloodID 10 .. 6). */
+int do_blood(obj_t *o)
+{
+    if (o->gv[2] < 6) {
+        obj_kill(o);
+    } else {
+        const int k = o->gv[2]--;
+        obj_image(o, G.img[IMG_BLOOD + k]);
+    }
     return 0;
 }
 

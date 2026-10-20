@@ -353,3 +353,27 @@ int wolf_run(obj_t *o)
     next_frame(o, o->gv[2] == 0 ? IMG_WOLF : IMG_DOG);
     return 0;
 }
+
+/* RXFRSTF.C:759 SPIKECHECK: spikes (and stakes) hurt the player they touch, with blood. A
+ * spiked wall (IsWall) only blocks a player walking or crawling into it (MAINTAINBLOCK, not
+ * ported yet). */
+void spike_check(obj_t *o, uint8_t is_wall)
+{
+    obj_t *you = G.you;
+    if (!you || !obj_collide(you, o))
+        return;
+    if ((you->animator == A_YOURUN || you->animator == A_YOUCROUCH) && is_wall)
+        return;
+    if (G.hitagain || (G.game_flags & 8) || G.you_invincible || you->animator == A_YOUDIE ||
+        G.quitflag)
+        return;
+    play_sample(0xA9, o);
+    if (G.blood_on) {
+        obj_t *b = spawn_obj(0x21, LIST_FORE, you->image, (uint16_t)(you->x - 5),
+                             (uint16_t)(you->y - 5));
+        b->image = NULL;
+        b->gv[0] = (int16_t)you->ysize;
+        b->gv[1] = 3;
+    }
+    hit_player(o);
+}

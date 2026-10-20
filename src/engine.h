@@ -28,8 +28,26 @@ enum { LIST_MAIN, LIST_FORE, LIST_SLOW, LIST_OFF, LIST_COUNT };
 enum {
     OF_HIT = 0x02,      /* hit by the player's weapon (ENEMYHIT) */
     OF_PLACED = 0x04,   /* from the level's object list (INITOBJ); spawned objects clear it */
+    OF_HITTABLE = 0x10, /* the whip and fireballs can hit it */
     OF_RATE = 0x40,     /* ANIMATORUPDATE runs the animator only when xPart += xSpeed carries */
 };
+
+/* _YouInventory (INVENTORY, DS:554b). The arrays are indexed by the character: 0 the female,
+ * 1 the male ((_GameFlags & 4) != 0). It lasts from level to level. */
+typedef struct {
+    uint32_t score;
+    uint16_t gems;               /* also the fireballs' ammunition */
+    uint8_t max_hit_points[2];
+    uint8_t hit_points[2];
+    uint8_t weapon_status[2];    /* fireballs (two at a time) / the whip in flight */
+    uint8_t flags;               /* bit 0 male poisoned, 1 female poisoned, 2-3 whip power,
+                                  * 4-5 fireball power (Poisoned1/2, WeaponPower1/2) */
+} inventory_t;
+
+extern inventory_t Inv;
+
+static inline unsigned whip_power(void) { return Inv.flags >> 2 & 3; }
+static inline unsigned fire_power(void) { return Inv.flags >> 4 & 3; }
 
 /* Animator values: offsets of behaviour functions in segment 1000. */
 enum {
@@ -40,7 +58,11 @@ enum {
     A_DOBOARSPEAR = 0x1531, A_DOSKELHEAD = 0x1540, A_SKELWALK = 0x157c, A_SKELLUNGE = 0x159a,
     A_DEMONWAIT = 0x15d6, A_DOLEAF = 0x1630, A_DOBIRD = 0x163f, A_DOBAT = 0x1987,
     A_BANDITWALK = 0x192d, A_WOLFRUN = 0x1ca0, A_DOARROWSIGN = 0x3010,
+    A_DOEXPLOSION = 0x2e48, A_EXPLODERSPAWNER = 0x2d81, A_DOFLYINGSHIT = 0x27ed,
     A_DOCOLLECTABLE = 0x3093, A_XLEVEL = 0x3b1a, A_SCREENCENTER = 0x53f4, A_GENERICBEGINJUMP = 0x3e54,
+    A_ENEMYHITPAUSE = 0x500d, A_SPLASHSPAWNER = 0x57cc, A_OFFKILLER = 0xae48,
+    A_DOFIREBALL = 0xb6a0, A_DOWHIP = 0xbaa6, A_DROPGEMSPAWNER = 0xbeda, A_DOHITPOINTS = 0xbee9,
+    A_DOGEMNUMBER = 0xbf07, A_DOBLOOD = 0xbff4,
     A_GENERICJUMP = 0x3f78, A_GENERICUP = 0x3fa4, A_GENERICBEGINFALL = 0x415b,
     A_GENERICFALL = 0x4295,
     A_DOPROJECTILE = 0x46bb, A_DOCONTAINER = 0x5216, A_DOROCKMONSTER = 0x5a18,
@@ -97,7 +119,7 @@ struct obj {
 
 /* The game state the behaviours share (the original's globals). */
 typedef struct {
-    const level_t *lv;
+    level_t *lv;                 /* GRABSTUFF changes its maps */
     uint8_t level;               /* _level */
     uint16_t org_x, org_y;       /* _OrgX / _OrgY: the view's top left corner, map pixels */
     obj_t *list[LIST_COUNT];     /* _MainListHead, _ForeListHead, _SlowListHead, _OffListHead */
@@ -123,7 +145,21 @@ typedef struct {
     uint16_t max_x, max_y;       /* _MaxX / _MaxY: map size in pixels */
     uint8_t keys[128];           /* _Keys: pressed, by PC scancode */
     uint16_t key_trans[8];       /* _KeyTrans: left, right, up, down, jump, attack, item, look */
-    uint8_t hit_points[2];       /* _YouInventory.HitPoints (female, male) */
+    uint8_t quitflag;            /* _quitflag: 3 level done, 4 dead, 6 warped */
+    uint8_t blood_on, status_on; /* _BloodOn, _StatusOn (both on in ROC.EXE) */
+    int16_t hitagain;            /* _hitagain: LEVELTIMER runs left before another hit counts */
+    uint8_t free_hit;            /* _FreeHit: the next HITPLAYER needn't touch the player */
+    uint8_t hit_release;         /* _HitRelease */
+    obj_t *hit_pts;              /* _HitPts: the hit points display */
+    int8_t whip_fc, whip_fcm, whip_fn, whip_ai; /* _WhippingFC / FCM / FN / AI */
+    obj_t *whip_hits[8];         /* DS:553b: objects this crack of the whip has hit */
+    uint8_t whip_hit_count;      /* DS:553a */
+    uint16_t secret_found, gem_found, enemy_found, statue_found, enemy_in_level;
+    uint8_t monster_counter, monster_number, max_monster_number;
+    uint16_t warp[10][2];        /* _WarpCoords: castle1 / castle2 tile types 10-19 */
+    uint16_t timer_ticks;        /* ticks towards the next LEVELTIMER run */
+    uint16_t splash_side;        /* DS:38c2: SPLASHSPAWNER's side for the next bit */
+    inventory_t old_inv;         /* _OldScore, _OldGems, _OldMaxHitPoints: back after a death */
     uint16_t old_game_flags;     /* _OldGameFlags */
     int16_t parent_priority;     /* _ParentPriority */
     uint16_t update;             /* _Update: ticks since the last frame */
@@ -136,7 +172,8 @@ extern game_t G;
 
 /* Start a level: load the sprite sets its object list names and create the objects
  * (LOADOBJ / INITOBJ / INITLEVEL's part for the level objects). */
-bool game_start(const level_t *lv, const archive_t *arc, char *err, size_t errlen);
+void game_new(bool male);                           /* a new game: character, inventory */
+bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen);
 void game_end(void);
 void game_view_on_player(void);                     /* NEWLEVEL's starting view */
 
@@ -155,6 +192,8 @@ void next_frame(obj_t *o, int img_base);            /* NEXTFRAME(objp, &_Img.xxx
 bool obj_visible(const obj_t *o);                   /* OBJVISIBLE: overlaps the view */
 bool obj_onscreen(const obj_t *o);                  /* OBJONSCREEN: wholly in the view */
 bool obj_overlap(const obj_t *a, const obj_t *b);   /* OBJOVERLAP: boxes overlap */
+bool obj_collide(const obj_t *a, const obj_t *b);   /* OBJCOLLIDE: the frames' hit boxes overlap */
+void obj_blink(obj_t *o, uint16_t blinks, uint16_t on, uint16_t off); /* OBJBLINK */
 uint16_t map_cell(unsigned row, unsigned col);      /* BgMap cell (0 outside the map) */
 uint8_t map_fg(unsigned row, unsigned col);         /* FgMap cell (0 outside the map) */
 bool can_go_up(const obj_t *o);
@@ -186,14 +225,24 @@ static inline bool key(int action)
     return G.keys[G.key_trans[action] & 0x7F] != 0;
 }
 
-void grab_stuff(unsigned row, unsigned col);        /* GRABSTUFF (not ported yet) */
+void grab_stuff(unsigned row, unsigned col);        /* GRABSTUFF (rxgrab.c) */
+void map_set_cell(unsigned row, unsigned col, uint16_t v);
+void map_set_fg(unsigned row, unsigned col, uint8_t v);
 
-/* Not ported yet: the player, sound, damage. */
+/* The player's hit points (_YouInventory.HitPoints[(_GameFlags & 4) != 0]). */
+static inline uint8_t *you_hp(void)
+{
+    return &Inv.hit_points[(G.game_flags & 4) != 0];
+}
+
+/* Damage (rxgenerl.c, rxforest.c). */
+int hit_player(obj_t *o);                           /* HITPLAYER */
+void enemy_hit(obj_t *o, uint8_t max_hits);         /* ENEMYHIT */
+void spike_check(obj_t *o, uint8_t is_wall);        /* SPIKECHECK */
+
+/* Not ported yet: sound. */
 int play_sample(uint8_t n, obj_t *o);               /* PLAYSAMPLE: returns a handle, 0 */
 bool sound_link_active(int16_t handle);
 void sound_link_kill(int16_t handle);
-void hit_player(obj_t *o);                          /* HITPLAYER */
-void enemy_hit(obj_t *o, uint8_t damage);           /* ENEMYHIT */
-void spike_check(obj_t *o, uint8_t up);             /* SPIKECHECK */
 
 #endif

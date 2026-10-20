@@ -1,7 +1,8 @@
 /* Realms of Chaos port: plays a level (the player's movement and the objects ported so far).
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
- *            [--hold ACTION:FROM-TO,...] [--sweep] [--list] [--screenshot out.png]
+ *            [--trace N] [--female] [--gems N] [--hold ACTION:FROM-TO,...] [--sweep] [--list]
+ *            [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
  * a 320x200 view at the game's timer rate. The game's keys: the arrows, Ctrl jump, Alt
@@ -12,8 +13,10 @@
  * With --screenshot it runs --ticks timer ticks (default 0) without a window and saves the
  * view. --pos fixes the camera there; --player moves the player (hotspot, map pixels) before
  * the run; --hold presses action keys (left, right, up, down, jump, attack, item, look) for a
- * range of ticks, e.g. "right:0-600,jump:200-260"; --sweep moves the player from its start to
- * the map's right edge during the run (to wake every object); --list prints every object. */
+ * range of ticks, e.g. "right:0-600,jump:200-260"; --trace N prints the player's state every N
+ * ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
+ * starts with N gems; --sweep moves the player from its start to the map's right edge during
+ * the run (to wake every object); --list prints every object. */
 #include "archive.h"
 #include "engine.h"
 #include "gfx.h"
@@ -41,10 +44,12 @@ typedef struct {
     int px, py;
     bool player;
     long ticks;
+    long trace;
+    int gems;
     hold_t holds[MAX_HOLDS];
     int hold_count;
     const char *screenshot;
-    bool no_objects, sweep, list;
+    bool no_objects, sweep, list, female;
 } options_t;
 
 static const char *const action_names[] = {"left", "right", "up",     "down",
@@ -86,6 +91,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->player = sscanf(argv[++i], "%d,%d", &o->px, &o->py) == 2;
         else if (!strcmp(a, "--ticks") && i + 1 < argc)
             o->ticks = atol(argv[++i]);
+        else if (!strcmp(a, "--trace") && i + 1 < argc)
+            o->trace = atol(argv[++i]);
         else if (!strcmp(a, "--hold") && i + 1 < argc) {
             if (!parse_holds(argv[++i], o))
                 return false;
@@ -93,6 +100,10 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->sweep = true;
         else if (!strcmp(a, "--list"))
             o->list = true;
+        else if (!strcmp(a, "--female"))
+            o->female = true;
+        else if (!strcmp(a, "--gems") && i + 1 < argc)
+            o->gems = atoi(argv[++i]);
         else if (!strcmp(a, "--no-objects"))
             o->no_objects = true;
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -203,6 +214,60 @@ static bool start_level(level_t *lv, const archive_t *arc, const level_list_t *l
     return true;
 }
 
+/* PROCESSLEVEL's _quitflag cases: 3 the exit (on to the next level, with at least 4 / 6 hit
+ * points and the poison cured), 4 dead (100 frames later the level starts again with the
+ * inventory it started with), 6 warped (the view follows). The story screens, the menu and
+ * saving aren't ported. Returns true if it started a level. */
+static bool process_level(level_t *lv, const archive_t *arc, const level_list_t *list,
+                          int *dead_frames, char *err, size_t errlen)
+{
+    switch (G.quitflag) {
+    case 3: {
+        if (G.diff_mode == 0) {
+            Inv.hit_points[0] = Inv.hit_points[1] = 10;
+        } else {
+            if (Inv.hit_points[0] < 4)
+                Inv.hit_points[0] = 4;
+            if (Inv.hit_points[1] < 6)
+                Inv.hit_points[1] = 6;
+        }
+        for (int i = 0; i < 2; i++)
+            if (Inv.hit_points[i] > Inv.max_hit_points[i])
+                Inv.hit_points[i] = Inv.max_hit_points[i];
+        Inv.flags &= 0xFC;
+        const int next = lv->number + 1 < 27 ? lv->number + 1 : 0;
+        printf("level %d done: on to level %d\n", lv->number, next);
+        if (!start_level(lv, arc, list, next, err, errlen))
+            fprintf(stderr, "roc: %s\n", err);
+        return true;
+    }
+    case 4:
+        if (++*dead_frames < 100)
+            return false;
+        *dead_frames = 0;
+        {
+            const inventory_t old = G.old_inv;
+            Inv = old;
+            Inv.hit_points[0] = G.diff_mode == 0 ? 10 : 4;
+            Inv.hit_points[1] = G.diff_mode == 0 ? 10 : 6;
+            for (int i = 0; i < 2; i++)
+                if (Inv.hit_points[i] > old.max_hit_points[i])
+                    Inv.hit_points[i] = old.max_hit_points[i];
+            Inv.flags &= 0xFC;
+        }
+        printf("died on level %d: starting again\n", lv->number);
+        if (!start_level(lv, arc, list, lv->number, err, errlen))
+            fprintf(stderr, "roc: %s\n", err);
+        return true;
+    case 6:
+        G.quitflag = 0;
+        game_view_on_player();
+        return false;
+    default:
+        return false;
+    }
+}
+
 static void render(surface_t *view, const level_t *lv, int cam_x, int cam_y, bool objects)
 {
     surface_fill(view, 0);
@@ -222,9 +287,11 @@ static void list_objects(void)
 }
 
 /* Run headless and save one view. */
-static int run_headless(const options_t *opt, level_t *lv, const level_list_t *list,
-                        surface_t *view)
+static int run_headless(const options_t *opt, level_t *lv, const archive_t *arc,
+                        const level_list_t *list, surface_t *view)
 {
+    char err[256];
+    int dead_frames = 0;
     const uint16_t start_x = G.you ? G.you->x : 0;
     int cam_x = G.org_x, cam_y = G.org_y;
     for (long t = 0; t < opt->ticks; t += 8) {
@@ -245,6 +312,12 @@ static int run_headless(const options_t *opt, level_t *lv, const level_list_t *l
             G.org_y = (uint16_t)opt->y;
         }
         game_frame((uint16_t)(opt->ticks - t < 8 ? opt->ticks - t : 8));
+        process_level(lv, arc, list, &dead_frames, err, sizeof err);
+        if (opt->trace && (t + 8) % opt->trace == 0 && G.you)
+            printf("  t %5ld  player %4u,%4u  anim %04x  hp %u/%u  gems %u  flags %02x  "
+                   "hitagain %d\n",
+                   t + 8, G.you->x, G.you->y, G.you->animator, Inv.hit_points[0],
+                   Inv.hit_points[1], Inv.gems, G.game_flags, G.hitagain);
     }
     if (opt->pos && !opt->sweep) {
         cam_x = opt->x;
@@ -270,6 +343,11 @@ static int run_headless(const options_t *opt, level_t *lv, const level_list_t *l
     if (G.you)
         printf("player at %u,%u (size %ux%u), animator %04x\n", G.you->x, G.you->y,
                G.you->xsize, G.you->ysize, G.you->animator);
+    printf("hit points %u/%u (female) %u/%u (male), gems %u, score %lu, quitflag %u, "
+           "enemies %u, gems found %u, secrets %u\n",
+           Inv.hit_points[0], Inv.max_hit_points[0], Inv.hit_points[1], Inv.max_hit_points[1],
+           Inv.gems, (unsigned long)Inv.score, G.quitflag, G.enemy_found, G.gem_found,
+           G.secret_found);
     if (opt->list)
         list_objects();
     return rc ? 1 : 0;
@@ -280,7 +358,8 @@ int main(int argc, char **argv)
     options_t opt;
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
-                        "[--no-objects] [--ticks N] [--hold ACTION:FROM-TO,...] [--sweep] "
+                        "[--no-objects] [--ticks N] [--trace N] [--female] [--gems N] "
+                        "[--hold ACTION:FROM-TO,...] [--sweep] "
                         "[--list] [--screenshot out.png]\n");
         return 2;
     }
@@ -297,6 +376,8 @@ int main(int argc, char **argv)
 
     level_t lv;
     memset(&lv, 0, sizeof lv);
+    game_new(!opt.female);
+    Inv.gems = (uint16_t)opt.gems;
     if (!start_level(&lv, &arc, &list, opt.level, err, sizeof err)) {
         fprintf(stderr, "roc: %s\n", err);
         return 1;
@@ -319,7 +400,7 @@ int main(int argc, char **argv)
     }
 
     if (opt.screenshot) {
-        const int rc = run_headless(&opt, &lv, &list, &view);
+        const int rc = run_headless(&opt, &lv, &arc, &list, &view);
         game_end();
         level_free(&lv);
         surface_free(&view);
@@ -345,7 +426,7 @@ int main(int argc, char **argv)
     SDL_RenderSetLogicalSize(ren, VIEW_W, VIEW_H);
     uint32_t *argb = malloc(VIEW_W * VIEW_H * sizeof *argb);
 
-    int shot = 0, cam_x = G.org_x, cam_y = G.org_y;
+    int shot = 0, cam_x = G.org_x, cam_y = G.org_y, dead_frames = 0;
     bool running = true, show_objects = !opt.no_objects, free_camera = false, paused = false;
     const double freq = (double)SDL_GetPerformanceFrequency();
     Uint64 last = SDL_GetPerformanceCounter();
@@ -406,11 +487,12 @@ int main(int argc, char **argv)
             for (int a = 0; a < 4; a++)
                 G.keys[G.key_trans[a] & 0x7F] = 0;
         }
-        if (!paused)
+        if (!paused) {
             game_frame((uint16_t)ticks);
-        if (G.you && G.you->y > G.max_y + 64) {
-            /* Fell into a pit. The game kills the player there (GRABSTUFF / YOUDIE, not
-             * ported yet); until then, start the level again. */
+            process_level(&lv, &arc, &list, &dead_frames, err, sizeof err);
+        }
+        if (G.you && G.you->y > G.max_y + 64 && !G.quitflag) {
+            /* Fell out of the map where no hazard tile catches it: start the level again. */
             if (!start_level(&lv, &arc, &list, lv.number, err, sizeof err))
                 fprintf(stderr, "roc: %s\n", err);
         }

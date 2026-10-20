@@ -5,6 +5,7 @@
 #include <string.h>
 
 game_t G;
+inventory_t Inv;
 
 /* ------------------------------------------------------------------------------------------ */
 /* Animators                                                                                   */
@@ -225,10 +226,53 @@ static uint16_t bg_cell(unsigned row, unsigned col)
     return map_cell(row, col);
 }
 
+/* GRABSTUFF changes the maps (MAPUPDATE redraws the cell; the port redraws every frame). */
+void map_set_cell(unsigned row, unsigned col, uint16_t v)
+{
+    const unsigned i = (uint16_t)(row * G.lv->cols + col);
+    if (i < (unsigned)(G.lv->rows * G.lv->cols))
+        G.lv->bg[i] = v;
+}
+
+void map_set_fg(unsigned row, unsigned col, uint8_t v)
+{
+    const unsigned i = (uint16_t)(row * G.lv->cols + col);
+    if (i < (unsigned)(G.lv->rows * G.lv->cols))
+        G.lv->fg[i] = v;
+}
+
 bool obj_overlap(const obj_t *a, const obj_t *b)
 {
     return a->x < (uint16_t)(b->x + b->xsize - 1) && b->x < (uint16_t)(a->x + a->xsize - 1) &&
            a->y < (uint16_t)(b->y + b->ysize - 1) && b->y < (uint16_t)(a->y + a->ysize - 1);
+}
+
+/* OBJCOLLIDE: the hit boxes of the objects' current frames overlap (mirrored like the image
+ * when xDir is 1). x is compared signed, y unsigned, as in the original. */
+bool obj_collide(const obj_t *a, const obj_t *b)
+{
+    const sprite_t *fa = a->image ? a->image : &no_image;
+    const sprite_t *fb = b->image ? b->image : &no_image;
+    const int16_t xa = a->xdir == 0 ? (int16_t)(a->x + fa->hit_xoff)
+                                    : (int16_t)(a->x - ((fa->hit_cols - fa->box_cols) +
+                                                        fa->hit_xoff));
+    const int16_t xb = b->xdir == 0 ? (int16_t)(b->x + fb->hit_xoff)
+                                    : (int16_t)(b->x - ((fb->hit_cols - fb->box_cols) +
+                                                        fb->hit_xoff));
+    if (!(xa < (int16_t)(xb + fb->hit_cols) && xb < (int16_t)(xa + fa->hit_cols)))
+        return false;
+    const uint16_t ya = (uint16_t)(a->y + fa->hit_yoff), yb = (uint16_t)(b->y + fb->hit_yoff);
+    return ya < (uint16_t)(yb + fb->hit_rows) && yb < (uint16_t)(ya + fa->hit_rows);
+}
+
+/* OBJBLINK: blink `blinks` times, on (drawn in BlinkColor) for `on` frames and off for `off`;
+ * 0 stops it. */
+void obj_blink(obj_t *o, uint16_t blinks, uint16_t on, uint16_t off)
+{
+    o->blinks = blinks;
+    o->blink_ct = on;
+    o->draw_on = on;
+    o->draw_off = off;
 }
 
 static int span(uint16_t from, uint16_t size);
@@ -321,12 +365,6 @@ void scroll_down(uint8_t n)
 {
     if (G.org_y < (uint16_t)(G.max_y - 200))
         G.org_y = (uint16_t)(G.org_y + n);
-}
-
-void grab_stuff(unsigned row, unsigned col)
-{
-    (void)row;
-    (void)col;
 }
 
 /* The cells an edge of the object spans; never 0 (the original would run 65536 times). */
@@ -525,10 +563,76 @@ static void free_dead(void)
     }
 }
 
+/* RXTIMERF.C:12 LEVELTIMER: NEWLEVEL installs it to run every 0x24 ticks (16 a second). It
+ * counts down the hit protection (bleeding meanwhile) and the attack's recovery, and makes
+ * spawned objects that went off screen kill themselves (OFFKILLER). */
+static void level_timer(void)
+{
+    if (G.monster_counter)
+        G.monster_counter--;
+    if (++G.hit_release > 3)
+        G.hit_release = 0;
+    if (G.hitagain < 1) {
+        if (G.hitagain < 0)
+            G.hitagain++;
+    } else {
+        G.hitagain--;
+        if (G.blood_on && G.you) {
+            const sprite_t *f = G.you->image ? G.you->image : &no_image;
+            const uint16_t r = frandom(5);
+            const uint16_t x = (uint16_t)(G.you->x + f->hit_xoff + (f->hit_cols >> 1) +
+                                          (frandom(7) - 3));
+            const uint16_t y = (uint16_t)(G.you->y + f->hit_yoff +
+                                          frandom((uint16_t)(f->hit_rows - 8)) + 8);
+            obj_t *b = spawn_obj(0x0A, LIST_MAIN, G.img[IMG_BLOOD + r], x, y);
+            b->animator = A_GENERICBEGINFALL;
+            b->gv[0] = 2;
+            b->gv[1] = 0;
+            b->gv[2] = (int16_t)r;
+            b->xspeed = 0;
+            b->yspeed = 0;
+        }
+    }
+    if (G.you && G.you->gv[0] != 0) {
+        if (G.you->gv[0] < 11) {
+            G.you->gv[0]--;
+            if (!(G.game_flags & 4) && !key(K_ATTACK))
+                G.you->gv[0] = 0;
+        } else if (!key(K_ATTACK)) {
+            G.you->gv[0] -= 10;
+        }
+    }
+    for (obj_t *o = G.list[LIST_OFF]; o; o = o->next) {
+        if (!(o->flags & OF_PLACED)) {
+            o->animator = A_OFFKILLER;
+            o->update = 0x1000;
+            if (o->flags & OF_RATE)
+                o->xspeed = 0x7FFF;
+        }
+    }
+}
+
+/* RXTIMERF.C:85 FOFFKILLER */
+int off_killer(obj_t *o)
+{
+    if (o->surface_flags & 8) {
+        G.monster_counter = 5;
+        G.monster_number--;
+    }
+    obj_kill(o);
+    return 0;
+}
+
 void game_frame(uint16_t ticks)
 {
-    /* RUNLEVEL's loop: ANIMATORUPDATE(_Update) runs the main and foreground lists once per
-     * tick and the slow list once per frame. (RUNTIMERS and RUNANIMTILES aren't ported.) */
+    /* RUNLEVEL's loop: RUNTIMERS (LEVELTIMER), then ANIMATORUPDATE(_Update) runs the main and
+     * foreground lists once per tick and the slow list once per frame. (RUNANIMTILES isn't
+     * ported.) */
+    G.timer_ticks = (uint16_t)(G.timer_ticks + ticks);
+    if (G.timer_ticks >= 0x24) {
+        G.timer_ticks = 0;
+        level_timer();
+    }
     G.update = ticks;
     int r = 0;
     for (uint16_t t = 0; t < ticks && !r; t++)
@@ -543,15 +647,32 @@ void game_frame(uint16_t ticks)
 
 void game_draw(surface_t *s)
 {
-    /* The list drawer at 3cb4:064c, for the main, foreground and slow lists in turn. */
+    /* The list drawer at 3cb4:064c, for the main, foreground and slow lists in turn. A
+     * blinking object counts BlinkCt down each frame; at 0 Blinks steps down and the count
+     * restarts from DrawOn (odd Blinks) or DrawOff (even). While Blinks is odd every pixel is
+     * drawn in BlinkColor. */
     static const int order[] = {LIST_MAIN, LIST_FORE, LIST_SLOW};
     for (int k = 0; k < 3; k++) {
-        for (const obj_t *o = G.list[order[k]]; o; o = o->next) {
+        for (obj_t *o = G.list[order[k]]; o; o = o->next) {
             const sprite_t *f = o->image;
-            if (!f || !obj_visible(o))
+            if (!f)
                 continue;
-            const int x = left_edge(o, f), y = (uint16_t)(o->y + f->img_yoff);
-            draw_sprite(s, f, x - G.org_x, y - G.org_y, o->xdir != 0);
+            bool color = false;
+            if (o->blinks) {
+                if (--o->blink_ct == 0) {
+                    o->blinks--;
+                    o->blink_ct = (o->blinks & 1) ? o->draw_on : o->draw_off;
+                }
+                color = (o->blinks & 1) != 0;
+            }
+            if (!obj_visible(o))
+                continue;
+            const int x = left_edge(o, f) - G.org_x;
+            const int y = (uint16_t)(o->y + f->img_yoff) - G.org_y;
+            if (color)
+                draw_sprite_color(s, f, x, y, o->xdir != 0, (uint8_t)o->blink_color);
+            else
+                draw_sprite(s, f, x, y, o->xdir != 0);
         }
     }
 }
@@ -570,16 +691,41 @@ static int find_set(const char *name)
     return -1;
 }
 
-bool game_start(const level_t *lv, const archive_t *arc, char *err, size_t errlen)
+static bool play_male = true;
+
+void game_new(bool male)
+{
+    play_male = male;
+    /* A new game's inventory: 4 / 6 hit points (what the level-end and death code restore),
+     * the first whip and fireball. */
+    memset(&Inv, 0, sizeof Inv);
+    Inv.max_hit_points[0] = Inv.hit_points[0] = 4;
+    Inv.max_hit_points[1] = Inv.hit_points[1] = 6;
+    Inv.flags = 1 << 2 | 1 << 4;
+}
+
+bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
 {
     game_end();
     G.lv = lv;
     G.level = (uint8_t)lv->number;
     G.seed = 1;
     G.diff_mode = 2;
-    G.game_flags = 4; /* the male character, whose sprites mark the start in every level */
-    G.hit_points[0] = 4;
-    G.hit_points[1] = 6;
+    G.game_flags = play_male ? 4 : 0; /* _GameFlags bit 2: the male character */
+    G.blood_on = 1;
+    G.status_on = 1;
+    /* NEWLEVELSETUP: what a death goes back to, and the castle levels' warp table
+     * (roc1warp.008 for castle1, .009 for castle2). */
+    Inv.weapon_status[0] = Inv.weapon_status[1] = 0;
+    G.old_inv = Inv;
+    G.max_monster_number = G.diff_mode < 3 ? 1 : G.diff_mode == 3 ? 2 : 3;
+    if (G.level == 5 || G.level == 6) {
+        size_t len;
+        uint8_t *w = arc_load(arc, G.level == 5 ? "roc1warp.008" : "roc1warp.009", &len);
+        for (size_t i = 0; w && i < 20 && i * 2 + 1 < len; i++)
+            G.warp[i / 2][i % 2] = (uint16_t)(w[i * 2] | w[i * 2 + 1] << 8);
+        free(w);
+    }
     G.max_x = (uint16_t)(lv->cols * TILE);
     G.max_y = (uint16_t)(lv->rows * TILE);
     /* _KeyTrans as ROC.EXE has it (SETUP can change it in ROC.CFG): the arrow keys, Ctrl
@@ -620,10 +766,18 @@ bool game_start(const level_t *lv, const archive_t *arc, char *err, size_t errle
             init_obj(f0, x, y, e->info);
     }
 
-    /* INITLEVEL (the parts ported so far): the ambient sound and camera objects. */
+    /* INITLEVEL (the parts ported so far): the ambient sound and camera objects, the hit
+     * points display and the gem counter (a gem and four digits). */
     if (G.level < 0x1B) {
         spawn_obj(0x5C, LIST_FORE, NULL, 0, 0);
         spawn_obj(0x08, LIST_FORE, NULL, 0, 0);
+        if (G.status_on) {
+            G.hit_pts = spawn_obj(0x0F, LIST_SLOW, NULL, 0, 0);
+            if (!G.lightning_flag)
+                G.hit_pts->gv[0] = 0;
+            for (int i = 0; i < 5; i++)
+                spawn_obj(0x09, LIST_SLOW, NULL, 0, 0x10)->gv[0] = (int16_t)i;
+        }
     }
     game_view_on_player();
     return true;
@@ -680,19 +834,4 @@ void sound_link_kill(int16_t handle)
     (void)handle;
 }
 
-void hit_player(obj_t *o)
-{
-    (void)o;
-}
 
-void enemy_hit(obj_t *o, uint8_t damage)
-{
-    (void)o;
-    (void)damage;
-}
-
-void spike_check(obj_t *o, uint8_t up)
-{
-    (void)o;
-    (void)up;
-}
