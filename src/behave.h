@@ -33,6 +33,7 @@ bool room_right(const obj_t *o);
 /* rxgenerl.c */
 int null_animator(obj_t *o);
 int do_arrow_sign(obj_t *o);
+int do_lightning(obj_t *o);
 int generic_begin_fall(obj_t *o);
 int generic_fall(obj_t *o);
 int generic_begin_jump(obj_t *o);
@@ -54,6 +55,10 @@ int off_killer(obj_t *o);
 /* rxgems.c */
 int do_flying_shit(obj_t *o);
 int power_up_sparks(obj_t *o);
+int shield_gem(obj_t *o);
+int lightning_gem(obj_t *o);
+int death_gem(obj_t *o);
+int sword_gem(obj_t *o);
 
 /* rxforest.c */
 int do_leaf(obj_t *o);
@@ -165,6 +170,8 @@ int demon_drop(obj_t *o);
 int demon_die(obj_t *o);
 
 /* rxdead.c */
+enum { CIRCLE_LEN = 270 };
+extern const int8_t circle1[CIRCLE_LEN]; /* _Circle1: (dx, dy) steps round a circle */
 int do_wisp(obj_t *o);
 
 /* rxboss.c */
@@ -205,6 +212,7 @@ int you_begin_fall(obj_t *o);
 int you_fall(obj_t *o);
 int you_horiz(obj_t *o);
 int you_begin_crouch(obj_t *o);
+int do_transformer(obj_t *o);
 int you_begin_stun(obj_t *o);
 int you_crouch(obj_t *o);
 int you_begin_climb(obj_t *o);

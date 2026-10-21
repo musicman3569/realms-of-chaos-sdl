@@ -1006,3 +1006,16 @@ int do_collectable(obj_t *o)
         obj_kill(o);
     return 0;
 }
+
+/* RXGENERL.C:129 DOLIGHTNING (type 0x0c): a bolt of the special item's lightning, kept where it
+ * struck relative to the player (GenericVar[3] / [4]) for 30 ticks. */
+int do_lightning(obj_t *o)
+{
+    o->x = (uint16_t)(G.you->x + o->gv[3]);
+    o->y = (uint16_t)(G.you->y + o->gv[4]);
+    if (o->y == 0)
+        o->y = 1;
+    if (o->counter > 0x1E)
+        obj_kill(o);
+    return 0;
+}

@@ -2,6 +2,7 @@
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
  *            [--trace N] [--female] [--gems N] [--boss-hits N] [--invincible] [--difficulty N]
+ *            [--collect K]
  *            [--hold ACTION:FROM-TO,...] [--sweep] [--list] [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
@@ -17,7 +18,8 @@
  * ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
  * starts with N gems; --boss-hits N starts the level's boss with N hits taken (GenericVar[3]);
  * --invincible sets _YouInvincible (nothing hurts the player); --difficulty N sets _DiffMode
- * (0-4, default 2);
+ * (0-4, default 2); --collect K hands the player prize K (CollectID[K], as DOFLYINGSHIT counts
+ * it: 0x21 shields, 0x23 lightning, 0x25 death, 0x29 a stronger weapon) at the start;
  * --sweep moves the player from its start to the map's right edge during
  * the run (to wake every object); --list prints every object. */
 #include "archive.h"
@@ -51,6 +53,7 @@ typedef struct {
     int gems;
     int boss_hits;
     int difficulty;
+    int collect;                 /* --collect: a prize (CollectID index) to collect, or -1 */
     hold_t holds[MAX_HOLDS];
     int hold_count;
     const char *screenshot;
@@ -87,6 +90,7 @@ static bool parse_args(int argc, char **argv, options_t *o)
 {
     memset(o, 0, sizeof *o);
     o->difficulty = 2;
+    o->collect = -1;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (!strcmp(a, "--level") && i + 1 < argc)
@@ -112,6 +116,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->invincible = true;
         else if (!strcmp(a, "--difficulty") && i + 1 < argc)
             o->difficulty = atoi(argv[++i]);
+        else if (!strcmp(a, "--collect") && i + 1 < argc)
+            o->collect = (int)strtol(argv[++i], NULL, 0);
         else if (!strcmp(a, "--gems") && i + 1 < argc)
             o->gems = atoi(argv[++i]);
         else if (!strcmp(a, "--boss-hits") && i + 1 < argc)
@@ -257,6 +263,14 @@ static bool process_level(level_t *lv, const archive_t *arc, const level_list_t 
             fprintf(stderr, "roc: %s\n", err);
         return true;
     }
+    case 8: {
+        /* a lightning warp (DOTRANSFORMER with _LightningFlag < 0) to _nextlevel */
+        const int next = G.next_level;
+        printf("level %d: warped to level %d\n", lv->number, next);
+        if (!start_level(lv, arc, list, next, err, errlen))
+            fprintf(stderr, "roc: %s\n", err);
+        return true;
+    }
     case 4:
         if (++*dead_frames < 100)
             return false;
@@ -375,7 +389,7 @@ int main(int argc, char **argv)
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
                         "[--no-objects] [--ticks N] [--trace N] [--female] [--gems N] "
-                        "[--boss-hits N] [--invincible] [--difficulty N] [--hold ACTION:FROM-TO,...] [--sweep] "
+                        "[--boss-hits N] [--invincible] [--difficulty N] [--collect K] [--hold ACTION:FROM-TO,...] [--sweep] "
                         "[--list] [--screenshot out.png]\n");
         return 2;
     }
@@ -411,6 +425,9 @@ int main(int argc, char **argv)
         G.you->y = (uint16_t)opt.py;
         game_view_on_player();
     }
+    if (opt.collect >= 0 && opt.collect < 43 && G.you)
+        spawn_obj(0x13, LIST_SLOW, G.img[IMG_COLLECT + opt.collect], G.you->x, G.you->y)->gv[0] =
+            (int16_t)opt.collect;
     if (opt.pos) {
         int x = opt.x, y = opt.y;
         clamp_camera(&lv, &x, &y);

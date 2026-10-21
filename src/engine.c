@@ -806,7 +806,7 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     /* INITLEVEL: the ambient sound and camera objects, the hit points display and the gem
      * counter (a gem and four digits); then each level's own objects: the scrollers, the
      * dragon's necks, the cave's torches, the night stars, the boulders and the skeleton
-     * boss. (The special item's object, for _LightningFlag, isn't ported.) */
+     * boss; a level entered by a lightning warp (_LightningFlag) starts with the lightning. */
     if (G.level < 0x1B) {
         spawn_obj(0x5C, LIST_FORE, NULL, 0, 0);
         spawn_obj(0x08, LIST_FORE, NULL, 0, 0);
@@ -816,6 +816,10 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
                 G.hit_pts->gv[0] = 0;
             for (int i = 0; i < 5; i++)
                 spawn_obj(0x09, LIST_SLOW, NULL, 0, 0x10)->gv[0] = (int16_t)i;
+        }
+        if (G.lightning_flag && G.you) {
+            spawn_obj(0x37, LIST_FORE, NULL, G.you->x, G.you->y);
+            G.you->gv[5] &= 0xFFEF;
         }
     }
     if (G.diff_mode > 2 && (G.level == 1 || G.level == 3 || G.level == 0x16))

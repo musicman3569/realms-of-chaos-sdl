@@ -4,9 +4,8 @@
 
 /* _Circle1 (468a:0000, a far data segment): 135 (dx, dy) steps round a circle about 70
  * pixels across, followed by "cc", the end mark. The x steps add up to -1, which the wisp
- * makes up for at the end of each lap. */
-enum { CIRCLE_LEN = 270 };
-static const int8_t circle1[CIRCLE_LEN] = {
+ * (and the shields, SHIELDGEM) make up for at the end of each lap. */
+const int8_t circle1[CIRCLE_LEN] = {
     1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0,
     1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1,
     1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1,

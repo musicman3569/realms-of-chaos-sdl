@@ -789,6 +789,51 @@ void setup_obj(obj_t *o, uint8_t type)
         o->max_frames = 2;
         o->anim_inc = 0;
         break;
+    case 0x07: /* DEATHGEM */
+        o->flags |= OF_RATE;
+        o->animator = A_DEATHGEM;
+        o->priority = 0xF0;
+        o->xspeed = 0x400;
+        o->gv[0] = 0;
+        break;
+    case 0x0C: /* a bolt of the special item's lightning */
+        o->animator = A_DOLIGHTNING;
+        o->priority = 0xE4;
+        o->gv[3] = (int16_t)(o->x - G.you->x);
+        o->gv[4] = (int16_t)(o->y - G.you->y);
+        break;
+    case 0x37: /* the special item (DOTRANSFORMER), which takes the item until it's done */
+        o->flags |= OF_RATE;
+        G.you->gv[5] &= 0xFFEF;
+        o->xspeed = 5000;
+        o->priority = 0xC8;
+        o->animator = A_DOTRANSFORMER;
+        o->counter = 0;
+        o->gv[3] = o->gv[0] = o->gv[1] = 0;
+        break;
+    case 0x55: /* a shield (SHIELDGEM) */
+        o->animator = A_SHIELDGEM;
+        o->update = 0x1000;
+        o->priority = 0xF0;
+        o->max_frames = 1;
+        o->frame_count_max = 0x14;
+        o->gv[3] = 0;
+        o->gv[4] = 0;
+        break;
+    case 0x56: /* LIGHTNINGGEM */
+        o->flags |= OF_RATE;
+        o->animator = A_LIGHTNINGGEM;
+        o->priority = 0xF0;
+        o->xspeed = 0x400;
+        o->gv[0] = 0;
+        break;
+    case 0x59: /* SWORDGEM */
+        o->flags |= OF_RATE;
+        o->animator = A_SWORDGEM;
+        o->priority = 0x20;
+        o->counter = 0;
+        o->xspeed = 0x1770;
+        break;
     case 0x5B: /* the raft's front piece */
         o->animator = A_NULLANIMATOR;
         o->priority = 0x18;

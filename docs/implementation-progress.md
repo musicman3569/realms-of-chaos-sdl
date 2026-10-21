@@ -78,11 +78,13 @@ build/roc.exe game/ROC.EXE --level 16 --invincible --ticks 30000 --list --screen
 # headless: the Ross fight, the boss starting with 165 of its 170 hits taken (--boss-hits)
 # headless: level 1 on difficulty 3 (_DiffMode; the default is 2), where the view scrolls by itself
 build/roc.exe game/ROC.EXE --level 1 --difficulty 3 --invincible --ticks 6000 --list --screenshot out.png
+# headless: collect prize 0x21 (CollectID index: the five shields) at the start, then change hero (Space)
+build/roc.exe game/ROC.EXE --level 0 --gems 50 --collect 0x21 --ticks 4000 --hold item:1000-1010 --list --screenshot out.png
 build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
 ```
 
 `ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
-arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Enter + up /
+arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Space the special item (change hero), Enter + up /
 down look. Viewer keys: [ and ]
 change level, C free camera (the arrows move the view), O hides the objects, P pauses, F12
 saves `shotNNN.png`, Esc quits. Reaching the exit goes on to the next level; dying restarts
@@ -282,6 +284,18 @@ player's position and animator, the inventory and the level's counters at the en
   riding its bottom edge; level 17's four boulders drop as the view passes and roll to rest
   (one at x 0x8e0 with a crash); level 19 scrolls left by itself and drops its boulders.
   Sweeps of all 29 levels (and of levels 1, 3, 22 at difficulty 4) reach no unported animator.
+- Port, the special item and the magic gems (notes "The special item and the magic gems"): in
+  `src/rxyou.c` FDOTRANSFORMER (type 0x37) and the special item key in FYOUHORIZ, FYOUCROUCH and
+  FYOUCLIMB; in `src/rxgenerl.c` DOLIGHTNING (type 0x0c); in `src/rxgems.c` SHIELDGEM (type 0x55),
+  LIGHTNINGGEM (0x56), DEATHGEM (7), SWORDGEM (0x59) and DOFLYINGSHIT's magic items; INITLEVEL's
+  lightning for a level entered by a warp; `_quitflag` 8 (a lightning warp to `_nextlevel`).
+  `circle1` (`_Circle1`) is shared with the wisp. `--collect K` hands the player prize K.
+  Verified headless: Space brings lightning down on the player and 100 ticks later the other
+  hero stands there (the hit points and attack switching with them); after 800 ticks it works
+  again; five shields circle the player and kill two bandits, two hits each; the lightning gem
+  inverts the palette and keeps the player unhurt for 0xddd ticks; the death gem flashes white
+  and kills what's in view; the weapon gem raises both weapons a step and holds the glowing
+  player while sparks fly in. A sweep of all 29 levels reaches no unported animator.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -291,11 +305,8 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **Unported leftovers** (next): every behaviour a level reaches is ported now (a `--sweep`
    run lists any animator that isn't; it needs `--screenshot`, or it opens a window).
-   INITLEVEL is complete except the special item's object (type 0x37 with `_LightningFlag`).
    `tools/animators.py` maps object types to animators. Left over from the damage
-   milestone: the special item (key 6, spawn type 0x37
-   / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
-   for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats
+   milestone: GRABSTUFF's other spawners (bolo cats
    0x68 via FINDBOLOPOS, goblin2's snake platform), the cat skeleton's bones in ENEMYHIT, the
    rafts' parent lists (PARENTLISTADD), PROCESSLEVEL's looking up / down, XLEVEL
    (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:

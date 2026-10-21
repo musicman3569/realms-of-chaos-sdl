@@ -7,11 +7,25 @@
  * The female character shoots fireballs, the male uses the whip. GenericVar[0] is the
  * attack's recovery (LEVELTIMER counts it down).
  *
- * Not ported yet: the special item (key 6). */
+ * The special item (key 6) changes the hero (DOTRANSFORMER). */
 #include "behave.h"
 
 #include <stdio.h>
 #include <string.h>
+
+/* The special item key (6, Space) with the item held (GenericVar[5] bit 0x10), not attacking
+ * or recovering from a hit: the change of hero (DOTRANSFORMER, type 0x37, which takes the item
+ * until it's done). True when it started. */
+static bool special_item(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (!(you->gv[5] & 0x10) || !key(K_ITEM) || (G.game_flags & 2) || (G.game_flags & 8))
+        return false;
+    you->blinks = 0;
+    obj_t *t = spawn_obj(0x37, LIST_FORE, you->image, o->x, o->y);
+    t->image = G.img[IMG_SWORD3];
+    return true;
+}
 
 static bool male(void)
 {
@@ -429,7 +443,8 @@ int you_horiz(obj_t *o)
             return 0;
         }
     }
-    /* (Key 6 with the special item spawns it, type 0x37: not ported yet.) */
+    if (special_item(o))
+        you->frame_count_max = male() ? 7 : 9;
 
     /* Slowing down: in the air by Friction / 2, on the ground at once. */
     const bool keep = (!male() || !(G.game_flags & 2) || !(you->gv[5] & 1)) &&
@@ -639,7 +654,7 @@ int you_crouch(obj_t *o)
                 return you_begin_whip(o);
             }
         }
-        /* (the special item key: not ported yet) */
+        special_item(o);
     }
     if (G.game_flags & 2) {
         if (male())
@@ -732,7 +747,10 @@ int you_climb(obj_t *o)
     }
     if (!key(K_JUMP))
         you->gv[5] |= 8;
-    /* (special item key: not ported yet) */
+    if ((you->gv[5] & 0x10) && key(K_ITEM) && !(G.game_flags & 2) && !(G.game_flags & 8)) {
+        you->frame_count = you->frame_count_max = male() ? 5 : 6;
+        special_item(o);
+    }
     if (key(K_LEFT) && you->xdir != 0) {
         you->xdir = 0;
         o->x = (uint16_t)(o->x + 5);
@@ -1555,6 +1573,79 @@ int screen_center(obj_t *o)
     } else if (G.window_ysize != 50) {
         set_scroll_bounds(0x32, G.window_xsize);
         G.window_ysize = 50;
+    }
+    return 0;
+}
+
+/* The hero's sprite sets (_YouWalkID...): the male's or the female's, by _GameFlags bit 2. */
+static void set_hero_sets(void)
+{
+    if (G.game_flags & 4) {
+        G.you_walk = IMG_MALWALK, G.you_jump = IMG_MALJUMP, G.you_duck = IMG_MALDUCK;
+        G.you_climb = IMG_MALCLIMB, G.you_attack = IMG_MALATTAC;
+    } else {
+        G.you_walk = IMG_FEMWALK, G.you_jump = IMG_FEMJUMP, G.you_duck = IMG_FEMDUCK;
+        G.you_climb = IMG_FEMCLIMB, G.you_attack = IMG_FEMATTAC;
+    }
+}
+
+/* RXYOUF.C:1494 FDOTRANSFORMER (type 0x37; DOTRANSFORMER calls it): the special item. Lightning
+ * strikes the player (DOLIGHTNING bolts every 0x20 pixels from the view's top, and 200 ticks of
+ * sparks), and 100 ticks later the other hero stands there: _GameFlags bit 2 flips and with it
+ * the sprite sets and which hit points count. The player blinks (colour 0x1d) meanwhile; after
+ * 800 ticks the item can be used again. Starting a level with _LightningFlag set (a warp) the
+ * same object brings the player in (> 0) or takes them away to _nextlevel (< 0, _quitflag 8). */
+int do_transformer(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (!you)
+        return 0;
+    if (o->counter < 300) {
+        if (o->gv[0] == 0) {
+            play_sample(0xB2, NULL);
+            if ((uint16_t)(G.org_y + 9) < o->y)
+                for (uint16_t y = G.org_y; y < (uint16_t)(o->y - 8); y = (uint16_t)(y + 0x20))
+                    spawn_obj(0x0C, LIST_MAIN, G.img[IMG_LIGHTNG + frandom(2)], o->x, y);
+            obj_t *s = spawn_obj(0x21, LIST_FORE, you->image, (uint16_t)(you->x - 5),
+                                 (uint16_t)(you->y - 5));
+            s->image = G.img[IMG_SWORD3];
+            s->xsize = 0x18;
+            s->ysize = 0x23;
+            s->gv[0] = 200;
+            s->gv[1] = 4;
+            o->gv[0]++;
+        }
+        if (o->counter > 100 && o->gv[0] == 1) {
+            if (G.lightning_flag == 0) {
+                G.game_flags ^= 4;
+                set_hero_sets();
+                if (you->animator == A_YOURUN)
+                    you->max_frames = male() ? 8 : 7;
+            } else if (G.lightning_flag < 0) {
+                G.next_level = (uint8_t)-G.lightning_flag;
+                you->image = G.img[IMG_SWORD3];
+            } else {
+                you->animator = A_YOUBEGINRUN;
+                obj_image(you, G.img[G.you_walk + 8]);
+            }
+            if (G.hit_pts) {
+                G.hit_pts->gv[0] = 0;
+                G.hit_pts->blinks = 0;
+            }
+            o->gv[0]++;
+        }
+    }
+    o->x = you->x;
+    o->y = you->y;
+    you->blink_color = 0x1D;
+    if (you->blinks == 0 && you->image)
+        obj_blink(you, 10, 2, 3);
+    if (o->counter > 800) {
+        you->gv[5] |= 0x10;
+        if (G.lightning_flag < 0)
+            G.quitflag = 8;
+        G.lightning_flag = 0;
+        obj_kill(o);
     }
     return 0;
 }

@@ -407,6 +407,40 @@ left corner; it blinks on the last hit point and while poisoned, and poison cost
 at each of the player's blinks. Four DOGEMNUMBER digits (GemNumID) and a spinning gem show
 the gem count.
 
+## The special item and the magic gems
+
+**The special item** (key 6, Space; RXYOUF.C:1494 FDOTRANSFORMER). The player's GenericVar[5] bit
+0x10 is the item; FYOUHORIZ, FYOUCROUCH and FYOUCLIMB check the key (not while attacking or
+recovering) and spawn type 0x37 (OF_RATE at 5000, priority 0xc8), whose SETUPOBJ takes the item
+away. At its first run lightning strikes: DOLIGHTNING bolts (type 0x0c, LightngID, kept where they
+struck relative to the player for 30 ticks) every 0x20 pixels from the view's top, and 200 ticks of
+sparks (an EXPLODERSPAWNER). 100 ticks later the hero changes: `_GameFlags` 4 flips, and with
+it `_YouWalkID`..., the hit points, the weapon and the attack key's meaning. The player blinks in
+colour 0x1d throughout; after 800 ticks the item is back. `_LightningFlag` (set by the warp
+menu, not ported) reuses it: INITLEVEL starts a warped-to level with one (> 0: the player
+appears), and < 0 takes the player away to `_nextlevel` (`_quitflag` 8).
+
+**The magic gems** are statues' priced prizes (CollectID 0x21-0x29: a statue's number 28-32),
+taken when the player has enough gems (DOCOLLECTABLE) and started by DOFLYINGSHIT:
+- 0x21 (25 gems): five shields, SHIELDGEM (type 0x55, ProjectiID), spread round `_Circle1` from the
+  offsets at DS:00c0 (0, 54, 106, 160, 212). GenericVar[0] is the place on the circle and
+  GenericVar[1] / [2] the offset from the player (16 pixels higher while crouching); a step round at
+  each carry of 0x4000, backwards while the player faces left. A shield flies to its place a pixel
+  at a time (jumping there when more than 0x37 off), then sticks (GenericVar[3]) and strikes
+  hittable things it touches (a hit point, sparks or blood), twice (GenericVar[4]); all go when
+  the female's hit points are gone, and none strike while `_hitagain` is negative.
+- 0x23 (15 gems): LIGHTNINGGEM (type 0x56, OF_RATE 0x400): `_hitagain` held at -11 (LEVELTIMER
+  counts negative values up, and HITPLAYER refuses while it's nonzero) for 0xddd ticks while the
+  palette steps by 5 to its negative (63 - `_LevelPal`), then back.
+- 0x25 (25 gems): DEATHGEM (type 7, OF_RATE 0x400): every palette component set to 60, fading 3 a
+  run back to `_LevelPal`; at every run until then each hittable creature in view (not a statue)
+  gets GenericVar[3] 5 and ENEMYHIT(4), with blood off. That includes the bosses.
+- 0x29 (50 gems): both weapon powers up a step, and SWORDGEM (type 0x59, OF_RATE 0x1770) freezes
+  the player (NULLANIMATOR, the old animator kept) glowing in colour 0x4a (the blink restarts at
+  each run) with `_hitagain` at -11 while sparks (POWERUPSPARKS) fly in from the view's edges, for
+  0xc00 ticks; at 0xf00 the player moves again.
+The gems' palette code ends by setting `_SavePal[0]` to 100, which isn't ported.
+
 ## Enemies
 
 Notes on the creatures ported after the forest ones. Many run with `OF_RATE` (flag 0x40), so

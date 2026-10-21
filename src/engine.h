@@ -54,7 +54,8 @@ enum {
     A_DOKNIFEGUARD = 0x0291, A_DOGUARDKNIFE = 0x0699, A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_BOMBEXPLODER = 0x08fc, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
     A_ROSSCRASH = 0x0ba1, A_ROSSPIECE = 0x0bb0, A_ROSSATTACK = 0x0bce, A_ROSSTHROW = 0x0bdd,
     A_ROSSLUNGE = 0x0bec, A_ROSSSWORD = 0x0bfb, A_ROSSSHAKE = 0x0c0a, A_ROSSKNIFE = 0x0c19,
-    A_ROSSDIE = 0x0c28, A_ROSSCLEAR = 0x0c37, A_BOSSHITPOINTS = 0x54cb, A_DODROP = 0x0c46, A_DOTORCH = 0x0d75, A_DOCATSKELETON = 0x0d95,
+    A_ROSSDIE = 0x0c28, A_ROSSCLEAR = 0x0c37, A_BOSSHITPOINTS = 0x54cb, A_DODROP = 0x0c46, A_DOTORCH = 0x0d75, A_SHIELDGEM = 0x1caf, A_LIGHTNINGGEM = 0x21f4, A_DEATHGEM = 0x23fd,
+    A_SWORDGEM = 0x2561, A_DOLIGHTNING = 0x2fcb, A_DOCATSKELETON = 0x0d95,
     A_DOCAVESPIKES = 0x0da4, A_DOCAVEFALLSPIKES = 0x0ea0, A_DOCAVESPIDER = 0x0fd9,
     A_DOGARGOYLE = 0x0fe8, A_DOGARGOYLEFIRE = 0x0ff7, A_DOCAVEHOLE = 0x1006,
     A_DOTORCHPUFF = 0x1015, A_DOWISP = 0x10b4, A_DOBOAR = 0x1513,
@@ -69,7 +70,7 @@ enum {
     A_DOCOLLECTABLE = 0x3093, A_XLEVEL = 0x3b1a, A_SCREENCENTER = 0x53f4, A_GENERICBEGINJUMP = 0x3e54,
     A_ENEMYHITPAUSE = 0x500d, A_SPLASHSPAWNER = 0x57cc, A_OFFKILLER = 0xae48,
     A_DOFIREBALL = 0xb6a0, A_DOWHIP = 0xbaa6, A_DROPGEMSPAWNER = 0xbeda, A_DOHITPOINTS = 0xbee9,
-    A_DOGEMNUMBER = 0xbf07, A_DOBLOOD = 0xbff4,
+    A_DOTRANSFORMER = 0xbef8, A_DOGEMNUMBER = 0xbf07, A_DOBLOOD = 0xbff4,
     A_GENERICJUMP = 0x3f78, A_GENERICUP = 0x3fa4, A_GENERICBEGINFALL = 0x415b,
     A_GENERICFALL = 0x4295,
     A_DOPROJECTILE = 0x46bb, A_DOCONTAINER = 0x5216, A_DOROCKMONSTER = 0x5a18,
@@ -146,7 +147,8 @@ typedef struct {
     uint32_t seed;               /* Borland rand() state */
     uint8_t diff_mode;           /* _DiffMode */
     uint16_t game_flags;         /* _GameFlags: bit 2 = playing the male character */
-    uint8_t lightning_flag;      /* _LightningFlag */
+    int8_t lightning_flag;       /* _LightningFlag: a warp's lightning (> 0 in, < 0 out) */
+    uint8_t next_level;          /* _nextlevel: where a lightning warp out goes */
     uint8_t message_on;          /* _MessageOn: hint messages enabled */
     uint8_t you_invincible;      /* _YouInvincible */
     uint16_t window_xsize;       /* _WindowXsize: width of the scrolling dead zone */
