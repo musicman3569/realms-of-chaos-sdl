@@ -73,6 +73,8 @@ build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold right:0-3000,jump:1000-
 build/roc.exe game/ROC.EXE --level 1 --ticks 40000 --sweep --list --screenshot out.png
 # headless: the female with 10 gems throws fireballs; print the player's state every 80 ticks
 build/roc.exe game/ROC.EXE --level 0 --female --gems 10 --player 470,231 --ticks 3000 --hold attack:900-920 --trace 80 --screenshot out.png
+# headless: the Ross fight, the boss starting with 165 of its 170 hits taken (--boss-hits)
+build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
 ```
 
 `ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
@@ -201,6 +203,17 @@ player's position and animator, the inventory and the level's counters at the en
   px/s); on goblin2 the player grabs the chain with up, climbs it, rides it on the boss's
   platform, jumps off, and drops off its bottom. A sweep of all 29 levels (both characters,
   attacking, 20,000 ticks) reaches no unported animator outside the bosses.
+- Port, the first boss, Ross (castleb, level 7; notes "Ross"): new `src/rxross.c`
+  (RXROSSF.C) FROSSWAIT, CRASH, PIECE, JUMP, ATTACK, THROW, LUNGE, SWORD, SHAKE (the view
+  shake the other bosses use too), KNIFE, DIE and CLEAR; in `src/rxgenerl.c` BOSSHITPOINTS (the
+  bar at the top), the bosses' hit table (DS:00c6, `boss_max_hits`), Ross's death in ENEMYHIT,
+  and ROSSPIECE / ROSSJUMP in GENERICUP / GENERICFALL. SETUPOBJ gained types 0x18 (sword, shaker),
+  0x19 (knife), 0x1a (ceiling stones) and 0x34 (the bar). `--boss-hits N` presets a boss's
+  damage for testing. Verified headless: once the view reaches the map's end Ross crashes through
+  the ceiling for 0x9c4 ticks with stones bouncing and the view shaking, lands on the right,
+  throws five knives, jumps across with his sword, lunges from the left and runs back, and keeps
+  the player inside the room; fireballs take him down (the bar follows), he flickers through 200
+  explosions and 1000 ticks later the level is won and level 8 starts.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -208,14 +221,15 @@ player's position and animator, the inventory and the level's counters at the en
 
 ## Next steps
 
-1. **The bosses** (next), one at a time with their cameras; a `--sweep` run lists the
+1. **The other bosses** (next), one at a time with their cameras; a `--sweep` run lists the
    animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
-   window). Only these are left: ROSSWAIT (7: Ross, RXROSSF.C), DODRAGONBOB / DRAGONCENTER (9,
-   10), CRUSHERCENTER (15), BOSSCENTER (16), DEMONWAIT / DEMONCENTER (25). The skeletons (SKEL*,
+   window), and `--boss-hits` shortens a fight. Left: the dragon, DODRAGONBOB / DRAGONCENTER
+   (9, 10; RXSWAMPF.C), the crusher's camera, CRUSHERCENTER (15; RXMUSH.C), the goblin boss's
+   head, BOSSCENTER (16; RXGOBLIN.C / RXBOSSF.C), and the demon, DEMONWAIT / DEMONCENTER (25;
+   RXDEMONF.C); BOSSHITPOINTS and ROSSSHAKE are already there for them. The skeletons (SKEL*,
    DOSKELHEAD) in RXSKELF.C are spawned by a boss, not placed; DOTORCH (type 0x2c) isn't placed
    by INITOBJ either. The priorities GENERICUP / GENERICFALL still skip (`own_behaviour` in
-   `src/rxgenerl.c`: 0x3b, 0x3c, 0x66, 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the
-   boulders. `tools/animators.py` maps object types to animators. Left over from the damage
+   `src/rxgenerl.c`: 0x66, 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the boulders. `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats

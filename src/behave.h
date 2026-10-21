@@ -2,7 +2,8 @@
  * (RXGENERL.C), rxforest.c (RXFOREST.C / RXFRSTF.C), rxplat.c (RXPLAT.C), rxcave.c (RXCAVE.C),
  * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
  * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMP.C / RXSWAMPF.C), rxmush.c
- * (RXMUSH.C), rxcastle.c (RXCASTLE.C), rxdead.c (RXDEAD.C).
+ * (RXMUSH.C), rxcastle.c (RXCASTLE.C), rxdead.c (RXDEAD.C),
+ * rxross.c (RXROSSF.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -44,6 +45,8 @@ int do_explosion(obj_t *o);
 int exploder_spawner(obj_t *o);
 int splash_spawner(obj_t *o);
 int do_collectable(obj_t *o);
+int boss_hit_points(obj_t *o);
+uint8_t boss_max_hits(int boss);                  /* by boss: 0 Ross ... 4 the demon */
 
 /* engine.c (RXTIMERF.C) */
 int off_killer(obj_t *o);
@@ -125,6 +128,20 @@ int do_back_stars(obj_t *o);
 
 /* rxdead.c */
 int do_wisp(obj_t *o);
+
+/* rxross.c */
+int ross_wait(obj_t *o);
+int ross_crash(obj_t *o);
+int ross_piece(obj_t *o);
+void ross_jump(obj_t *o);
+int ross_attack(obj_t *o);
+int ross_throw(obj_t *o);
+int ross_lunge(obj_t *o);
+int ross_sword(obj_t *o);
+int ross_shake(obj_t *o);
+int ross_knife(obj_t *o);
+int ross_die(obj_t *o);
+int ross_clear(obj_t *o);
 
 /* rxyou.c */
 int you_begin_run(obj_t *o);

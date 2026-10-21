@@ -1,7 +1,8 @@
 /* Realms of Chaos port: plays a level (the player's movement and the objects ported so far).
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
- *            [--trace N] [--female] [--gems N] [--hold ACTION:FROM-TO,...] [--sweep] [--list]
+ *            [--trace N] [--female] [--gems N] [--boss-hits N] [--hold ACTION:FROM-TO,...]
+ *            [--sweep] [--list]
  *            [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
@@ -15,7 +16,8 @@
  * the run; --hold presses action keys (left, right, up, down, jump, attack, item, look) for a
  * range of ticks, e.g. "right:0-600,jump:200-260"; --trace N prints the player's state every N
  * ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
- * starts with N gems; --sweep moves the player from its start to the map's right edge during
+ * starts with N gems; --boss-hits N starts the level's boss with N hits taken (GenericVar[3]);
+ * --sweep moves the player from its start to the map's right edge during
  * the run (to wake every object); --list prints every object. */
 #include "archive.h"
 #include "engine.h"
@@ -46,6 +48,7 @@ typedef struct {
     long ticks;
     long trace;
     int gems;
+    int boss_hits;
     hold_t holds[MAX_HOLDS];
     int hold_count;
     const char *screenshot;
@@ -104,6 +107,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->female = true;
         else if (!strcmp(a, "--gems") && i + 1 < argc)
             o->gems = atoi(argv[++i]);
+        else if (!strcmp(a, "--boss-hits") && i + 1 < argc)
+            o->boss_hits = atoi(argv[++i]);
         else if (!strcmp(a, "--no-objects"))
             o->no_objects = true;
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -359,7 +364,7 @@ int main(int argc, char **argv)
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
                         "[--no-objects] [--ticks N] [--trace N] [--female] [--gems N] "
-                        "[--hold ACTION:FROM-TO,...] [--sweep] "
+                        "[--boss-hits N] [--hold ACTION:FROM-TO,...] [--sweep] "
                         "[--list] [--screenshot out.png]\n");
         return 2;
     }
@@ -387,6 +392,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "roc: out of memory\n");
         return 1;
     }
+    if (opt.boss_hits && G.boss)
+        G.boss->gv[3] = (int16_t)opt.boss_hits;
     if (opt.player && G.you) {
         G.you->x = (uint16_t)opt.px;
         G.you->y = (uint16_t)opt.py;

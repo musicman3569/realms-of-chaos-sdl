@@ -529,6 +529,36 @@ checks `HitPoints[0]`, the female's hit points, whichever character is playing.
   whenever the last has ended, a sample per group of levels (`do_ambient_noise` in
   `src/rxyou.c` has the table). It does nothing on a sound card with 3 voices or fewer.
 
+## The bosses
+
+**Shared parts.** `_Boss` points at the boss (INITOBJ / SETUPOBJ set it). Its GenericVar[3] is
+the damage taken, and its hit points come from a table at DS:00c6: five bytes per `_DiffMode`
+(0-4), for Ross (level 7), the dragon (10), the goblin boss (16), level 20's and the demon (25):
+70 / 20 / 50 / 15 / 60 on the easiest, 170 / 30 / 120 / 20 / 110 on the default difficulty 2.
+ENEMYHIT never cuts a boss's hits to 1 on the easiest difficulty, and gives each boss its own
+death. BOSSHITPOINTS (type 0x34) shows BossHpID[10 .. 1] by tenths of the damage, [0] when
+beaten, blinking on the last step. ENEMYHITPAUSE keeps the player inside the view while the
+boss flinches. ROSSSHAKE (an invisible type 0x18) is the bosses' screen shake: up a pixel at
+tick 20, down at 40, twice, the camera let go meanwhile (`_CenterOff` -1).
+
+**Ross** (castleb, level 7, RXROSSF.C; the ROSS* animators in RXCASTLE.C call FROSS*). He
+waits until `_OrgX` is exactly `Cols * 16 - 0x141`, which the view passes on its way to its
+last position (`_MaxX - 320`, `_MaxX` being `Cols * 16` from VIEWPOSITION). Then the dead zone
+becomes the view's width, the bar appears, and ROSSCRASH (OF_RATE, 7 runs a second) shakes the
+view and drops a ceiling stone each run (type 0x1a, priority 0x3b: ROSSPIECE drifts it; it
+bounces once and goes) for 0x9c4 ticks before he falls in. From then on the player is kept
+right of `Cols * 16 - 0x139`. Flags bit 0 is the side he heads for; GenericVar[0] steers the
+routine (0 falling in, 1 after a jump, 2 must jump next, 1-3 the lunge's stages); landing
+(GENERICDOWN, priority 0x3c) is ROSSATTACK, which puts him at x 0xb9 or 0x188. On the right he
+throws (ROSSTHROW by Counter: knives at 600, five times, looping back to 0x65); on the left he
+lunges (ROSSLUNGE: crouch, thrust, run right past 0x10b, unhurt while running, and jump); 1 time
+in 4, or after throwing, he jumps across (GenericVar[4] 0xbe, ySpeed -26000; ROSSJUMP moves him
+22000 a tick sideways). His sword (type 0x18, ROSSSWORD) follows his image and goes when the image
+has no sword. Images are mostly set straight into ImageID, so comparisons like "ImageID ==
+RossJumpID[1]" (just landed) drive the states. ROSSDIE hides him 4 ticks in 10 (keeping the
+image at DS:50d2) with an explosion every 10 ticks, 200 in all; ROSSCLEAR wins the level 1000
+ticks later if `HitPoints[0]` (the female's) isn't 0.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

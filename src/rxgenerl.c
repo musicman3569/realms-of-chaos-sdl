@@ -116,9 +116,14 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x3A:
         do_bomb(o);
         return;
-    case 0x3B: case 0x3C:
+    case 0x3B:
+        ross_piece(o);
+        return;
+    case 0x3C:
+        ross_jump(o);
+        return;
     case 0x66: case 0x49: case 0x47: case 0x97: case 0x4A:
-        return; /* ROSSPIECE, ROSSJUMP, ...: not ported yet */
+        return; /* DRAGONHEADDIE, FDOSPITTLE2, ...: not ported yet */
     case 0x4E:
         if (!falling)
             break;
@@ -520,8 +525,18 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
     }
     if (pr != 2)
         G.enemy_found++;
-    if (pr == 0x3C || pr == 0x66 || pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
-        return; /* the bosses' deaths: not ported yet */
+    if (pr == 0x3C) {
+        /* Ross */
+        play_sample(0xA0, NULL);
+        o->animator = A_ROSSDIE;
+        o->counter = 0;
+        o->gv[0] = 0;
+        o->gv[1] = 0;
+        o->gv[2] = (int16_t)o->x;
+        return;
+    }
+    if (pr == 0x66 || pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
+        return; /* the other bosses' deaths: not ported yet */
     if (pr == 2) {
         o->old_animator = o->animator;
         o->animator = A_ENEMYHITPAUSE;
@@ -782,6 +797,55 @@ side:
     p->xdir = (uint16_t)(p->x - o->x) < (o->xsize >> 1) ? 0 : 1;
     if (o->gv[1] < ++o->gv[0])
         obj_kill(o);
+    return 0;
+}
+
+/* The bosses' hit points (DS:00c6): by _DiffMode, five bytes for Ross (level 7), the dragon
+ * (10), the goblin boss (16), level 20's and the demon (25). */
+uint8_t boss_max_hits(int boss)
+{
+    static const uint8_t hits[5][5] = {
+        {0x46, 0x14, 0x32, 0x0F, 0x3C}, {0x82, 0x28, 0x64, 0x14, 0x64},
+        {0xAA, 0x1E, 0x78, 0x14, 0x6E}, {0xE6, 0x28, 0x96, 0x19, 0x7D},
+        {0xFF, 0x2D, 0xA0, 0x1E, 0x96},
+    };
+    return hits[G.diff_mode < 5 ? G.diff_mode : 4][boss];
+}
+
+/* RXGENERL.C:1281 BOSSHITPOINTS: the boss's bar at the top of the view (type 0x34, BossHpID):
+ * BossHpID[10] full down to [1], one step for each tenth of the boss's hits taken (its
+ * GenericVar[3]), [0] once beaten; the last step blinks. */
+int boss_hit_points(obj_t *o)
+{
+    o->x = (uint16_t)(G.org_x + 0x89);
+    o->y = (uint16_t)(G.org_y + 7);
+    if (o->image == G.img[IMG_BOSSHP + 1] && o->blinks == 0) {
+        o->blink_color = 0x2E;
+        obj_blink(o, 10, 3, 6);
+    }
+    const int16_t taken = G.boss->gv[3];
+    if (o->gv[0] == taken)
+        return 0;
+    o->gv[0] = taken;
+    int boss = -1;
+    switch (G.level) {
+    case 7: boss = 0; break;
+    case 10: boss = 1; break;
+    case 0x10: boss = 2; break;
+    case 0x14: boss = 3; break;
+    case 0x19: boss = 4; break;
+    default: break;
+    }
+    if (boss >= 0 && taken >= boss_max_hits(boss)) {
+        o->image = G.img[IMG_BOSSHP];
+        return 0;
+    }
+    /* (On another level the original uses whatever is in its uninitialised x.) */
+    const uint8_t max = boss >= 0 ? boss_max_hits(boss) : 10;
+    int x = max / 10 ? (max - taken) / (max / 10) : 0;
+    if (x == 0)
+        x = 1;
+    o->image = G.img[IMG_BOSSHP + (x < 11 ? x : 10)];
     return 0;
 }
 

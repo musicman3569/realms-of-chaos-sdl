@@ -230,6 +230,26 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[3] = 0;
         o->flags |= 0x10;
         break;
+    case 0x18: /* Ross's sword (and the view shakers, which get ROSSSHAKE) */
+        o->priority = 0x3D;
+        o->animator = A_ROSSSWORD;
+        o->update = 0x1000;
+        break;
+    case 0x19: /* Ross's knife */
+        o->flags |= OF_RATE;
+        o->xspeed = 26000;
+        o->priority = 0x3E;
+        o->animator = A_ROSSKNIFE;
+        o->anim_inc = 0;
+        o->max_frames = 7;
+        o->frame_count_max = 10;
+        break;
+    case 0x1A: /* a stone from the ceiling Ross crashes through */
+        o->priority = 0x3B;
+        o->animator = A_GENERICBEGINFALL;
+        o->yspeed = 4000;
+        o->gv[0] = 0;
+        break;
     case 0x1B: /* cave spikes, stakes */
         o->priority = 0x51;
         o->animator = A_DOCAVESPIKES;
@@ -422,6 +442,12 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[0] = (int16_t)name_char(o, 0);
         o->gv[1] = 0;
         o->gv[5] |= 1;
+        break;
+    case 0x34: /* the boss's hit points */
+        o->update = 0x1000;
+        o->priority = 0xF0;
+        o->animator = A_BOSSHITPOINTS;
+        o->gv[0] = 0x190;
         break;
     case 0x35: /* knife-throwing cat */
         o->flags |= OF_RATE | 0x10;
