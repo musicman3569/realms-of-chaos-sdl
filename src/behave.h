@@ -3,7 +3,7 @@
  * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
  * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMP.C / RXSWAMPF.C), rxmush.c
  * (RXMUSH.C), rxcastle.c (RXCASTLE.C), rxdead.c (RXDEAD.C),
- * rxross.c (RXROSSF.C), rxboss.c (RXBOSSF.C).
+ * rxross.c (RXROSSF.C), rxboss.c (RXBOSSF.C), rxdemon.c (RXDEMONF.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -53,6 +53,7 @@ int off_killer(obj_t *o);
 
 /* rxgems.c */
 int do_flying_shit(obj_t *o);
+int power_up_sparks(obj_t *o);
 
 /* rxforest.c */
 int do_leaf(obj_t *o);
@@ -86,6 +87,8 @@ int frog_plat(obj_t *o);
 int spinning_platform(obj_t *o);
 int no_spin_plat(obj_t *o);
 int spin_plat_die(obj_t *o);
+int rolling_boulder(obj_t *o);
+int still_boulder(obj_t *o);
 
 /* rxcave.c */
 int do_cave_spikes(obj_t *o);
@@ -147,6 +150,15 @@ int do_bomb_guard(obj_t *o);
 int do_bomb(obj_t *o);
 int bomb_exploder(obj_t *o);
 int do_back_stars(obj_t *o);
+
+/* rxdemon.c */
+int demon_center(obj_t *o);
+int demon_wait(obj_t *o);
+int demon_spit(obj_t *o);
+int demon_summon(obj_t *o);
+int demon_spout(obj_t *o);
+int demon_drop(obj_t *o);
+int demon_die(obj_t *o);
 
 /* rxdead.c */
 int do_wisp(obj_t *o);

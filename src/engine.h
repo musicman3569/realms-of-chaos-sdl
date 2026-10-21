@@ -61,7 +61,9 @@ enum {
     A_DOBOARATTACK = 0x1522, A_DOBOARSPEAR = 0x1531, A_DOSKELHEAD = 0x1540, A_SKELWAIT = 0x154f,
     A_SKELRISE = 0x155e, A_SKELSINK = 0x156d, A_SKELWALK = 0x157c, A_SKELHACK = 0x158b,
     A_SKELLUNGE = 0x159a, A_SKELWAIT2 = 0x15a9, A_SKELDIE = 0x15b8,
-    A_DEMONWAIT = 0x15d6, A_DOLEAF = 0x1630, A_DOBIRD = 0x163f, A_DOBAT = 0x1987,
+    A_DEMONCENTER = 0x15c7, A_DEMONWAIT = 0x15d6, A_DEMONSPIT = 0x15e5, A_DEMONSUMMON = 0x15f4,
+    A_DEMONSPOUT = 0x1603, A_DEMONDROP = 0x1612, A_DEMONDIE = 0x1621, A_POWERUPSPARKS = 0x26eb,
+    A_DOLEAF = 0x1630, A_DOBIRD = 0x163f, A_DOBAT = 0x1987,
     A_BANDITWALK = 0x192d, A_WOLFRUN = 0x1ca0, A_DOARROWSIGN = 0x3010,
     A_DOEXPLOSION = 0x2e48, A_EXPLODERSPAWNER = 0x2d81, A_DOFLYINGSHIT = 0x27ed,
     A_DOCOLLECTABLE = 0x3093, A_XLEVEL = 0x3b1a, A_SCREENCENTER = 0x53f4, A_GENERICBEGINJUMP = 0x3e54,
@@ -81,7 +83,7 @@ enum {
     A_CRUMBLEPLATFALL = 0x8bd7, A_DOPULLEY = 0x8d31, A_PULLYPLATWAIT = 0x8de5,
     A_PULLYPLATMOVE = 0x8e2b, A_PULLYPLATRETURN = 0x8fbc, A_PULLYPLATDIP = 0x9144,
     A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c, A_BRIKSHAKE = 0x9659,
-    A_SWAMPRAFT = 0x9744, A_ROLLINGBOULDER = 0xa63a, A_MUDMANWALK = 0xafca,
+    A_SWAMPRAFT = 0x9744, A_ROLLINGBOULDER = 0xa63a, A_STILLBOULDER = 0xaa0e, A_MUDMANWALK = 0xafca,
     A_DOMOSQUITO = 0xafd9, A_DOFROG = 0xafe8, A_FROGLAUNCH = 0xaff7,
     A_FROGLAND = 0xb006, A_DRAGONCENTER = 0xb0df, A_DODRAGONBOB = 0xb0ee,
     A_DODRAGONSPIT = 0xb0fd, A_DODRAGONFIRE = 0xb10c, A_DODRAGONBOOM = 0xb11b,
@@ -176,6 +178,11 @@ typedef struct {
     uint16_t old_game_flags;     /* _OldGameFlags */
     int16_t parent_priority;     /* _ParentPriority */
     uint16_t update;             /* _Update: ticks since the last frame */
+    const archive_t *arc;        /* ROC.DAT, for what the behaviours load (AOPEN / READITEM) */
+    uint8_t virt_pal[768];       /* _VirtPal: the level's palette as loaded */
+    uint8_t level_pal[768];      /* _LevelPal: the palette the level fades back to */
+    uint8_t *torch_change;       /* _TorchChange: level 25's PALCH table (rocdemfd.txt) */
+    uint16_t face_timer;         /* DS:38c0: DEMONFACE's calls since the face last changed */
     obj_t *dead;                 /* killed this frame, to free */
     char unported[64][24];       /* animators reached that have no port yet (logged once) */
     int unported_count;

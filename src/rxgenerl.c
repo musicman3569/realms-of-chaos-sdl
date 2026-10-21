@@ -141,7 +141,8 @@ static void own_behaviour(obj_t *o, bool falling)
             skel_rise(o);
         return;
     case 0x97:
-        return; /* ROLLINGBOULDER: not ported yet */
+        rolling_boulder(o);
+        return;
     case 0x4E:
         if (!falling)
             break;
@@ -584,8 +585,29 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
         G.boss->gv[2] = 0;
         return;
     }
-    if (pr == 0x4C)
-        return; /* the demon's death: not ported yet */
+    if (pr == 0x4C) {
+        /* the demon: its boars die and its spikes go */
+        obj_t *b = G.boss;
+        b->animator = A_DEMONDIE;
+        b->counter = 0;
+        b->flags &= 0xFFEF;
+        b->gv[0] = 0;
+        b->gv[1] = 0;
+        b->gv[3] = (int16_t)o->x;
+        b->gv[4] = (int16_t)o->y;
+        b->gv[2] = (int16_t)play_sample(0xA1, NULL);
+        for (obj_t *p = G.list[LIST_MAIN], *next; p; p = next) {
+            next = p->next;
+            if (p->priority == 0x3B) {
+                p->gv[3] = (int16_t)(p->gv[3] + 3);
+                enemy_hit(p, 2);
+            } else if (p->priority == 0x65) {
+                p->image = G.img[IMG_SWORD3];
+                p->animator = A_OFFKILLER;
+            }
+        }
+        return;
+    }
     if (pr == 2) {
         o->old_animator = o->animator;
         o->animator = A_ENEMYHITPAUSE;

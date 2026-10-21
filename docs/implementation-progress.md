@@ -255,6 +255,21 @@ player's position and animator, the inventory and the level's counters at the en
   bounces about the room and blinks for 500 ticks; a strike on the skeleton (damage preset to
   19 of 20) kills it: it floats up flickering through explosions and bones, and 71 x 45 ticks
   later level 21 starts. A sweep of all 29 levels reaches no unported animator but the demon's.
+- Port, the demon and the ending (demon, level 25; notes "The demon and the ending"): new
+  `src/rxdemon.c` (RXDEMONF.C) FDEMONCENTER, WAIT, SPIT, SUMMON, SPOUT, DROP, DIE and DEMONFACE;
+  in `src/rxplat.c` ROLLINGBOULDER and STILLBOULDER (SETUPOBJ type 0x50); in `src/rxgems.c`
+  POWERUPSPARKS; the demon's death in ENEMYHIT. `game_start` loads level 25's PALCH table
+  (`rocdemfd.txt`) and keeps `_VirtPal` / `_LevelPal`; the behaviours change the level's
+  palette (SETPALETTE / GETPALETTE). NEWLEVEL's fixed starting views for levels 15, 20, 25
+  and 27+ are in `game_view_on_player`. Verified headless: once the player lands and 500 ticks
+  later, the demon comes out of the dark in 16 palette steps, the bar shows, and it cycles:
+  eight fireballs, two fire boars from the view's sides, two sweeps of spikes (landing as
+  flame vents) and potions, a boulder that bounces and rolls across (and crushes a player
+  standing under it); a female's fireball from below (damage preset to 109 of 110) kills it.
+  It shakes in a storm of explosions and fire, the screen fades to white, the room comes back
+  without it (`demgone.bg`) with both heroes, sparks gather into a light that sinks to them,
+  and the level ends (`_quitflag` 3; the game loop then goes on to level 26). A sweep of all 29
+  levels reaches no unported animator.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -262,22 +277,19 @@ player's position and animator, the inventory and the level's counters at the en
 
 ## Next steps
 
-1. **The other bosses** (next), one at a time with their cameras; a `--sweep` run lists the
-   animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
-   window), `--boss-hits` shortens a fight and `--invincible` keeps the player alive. Left:
-   the demon, DEMONWAIT / DEMONCENTER (25; RXDEMONF.C; ENEMYHIT's priority 0x4c death is still
-   a stub); BOSSHITPOINTS and ROSSSHAKE are already there for it.
+1. **Unported leftovers** (next): every behaviour a level reaches is ported now (a `--sweep`
+   run lists any animator that isn't; it needs `--screenshot`, or it opens a window).
    **INITLEVEL** (RXOBJF.C:391, ported in `game_start`) still lacks these spawns, which is
    why the sweeps never reach them: type 0x29 on levels 1, 3 and 22 above difficulty 2; level
    13's 0x2b (CAVESCROLLER) and its torches (0x2c, DOTORCH); 16 background stars (0x16) on
-   levels 11 and 12; type 0x11 (BOULDERSPAWNER) on levels 17 and 19. DOTORCH (type 0x2c) isn't
-   placed by INITOBJ either. The priority GENERICUP / GENERICFALL still skip (`own_behaviour` in
-   `src/rxgenerl.c`: 0x97) is the boulders'. `tools/animators.py` maps object types to animators. Left over from the damage
+   levels 11 and 12; type 0x11 (BOULDERSPAWNER, whose boulders ROLLINGBOULDER already rolls)
+   on levels 17 and 19. DOTORCH (type 0x2c) isn't placed by INITOBJ either.
+   `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats
    0x68 via FINDBOLOPOS, goblin2's snake platform), the cat skeleton's bones in ENEMYHIT, the
-   rafts' parent lists (PARENTLISTADD), the bosses' deaths, PROCESSLEVEL's looking up / down, XLEVEL
+   rafts' parent lists (PARENTLISTADD), PROCESSLEVEL's looking up / down, XLEVEL
    (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:
    `http://127.0.0.1:8080/decompile?name=DOTRANSFORMER`.
 2. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame

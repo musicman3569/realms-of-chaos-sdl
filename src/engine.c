@@ -749,6 +749,18 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
             G.warp[i / 2][i % 2] = (uint16_t)(w[i * 2] | w[i * 2 + 1] << 8);
         free(w);
     }
+    if (G.level == 0x19) {
+        /* READITEM(0x62): the demon's palette steps */
+        size_t len;
+        G.torch_change = arc_load(arc, "rocdemfd.txt", &len);
+        if (G.torch_change && len < 16 * 0x150) {
+            free(G.torch_change);
+            G.torch_change = NULL;
+        }
+    }
+    G.arc = arc;
+    memcpy(G.virt_pal, lv->palette, sizeof G.virt_pal);
+    memcpy(G.level_pal, lv->palette, sizeof G.level_pal);
     G.max_x = (uint16_t)(lv->cols * TILE);
     G.max_y = (uint16_t)(lv->rows * TILE);
     /* _KeyTrans as ROC.EXE has it (SETUP can change it in ROC.CFG): the arrow keys, Ctrl
@@ -822,7 +834,13 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
 void game_view_on_player(void)
 {
     /* NEWLEVEL: the view starts with the player 0x8c pixels from the left and 0x4c from the
-     * top, and a 42 x 50 dead zone. */
+     * top, and a 42 x 50 dead zone; the boss rooms of levels 15, 20 and 25 (and the levels
+     * after 26) start at a fixed place. */
+    if (G.level == 0x0F || G.level > 0x1A || G.level == 0x14 || G.level == 0x19) {
+        G.org_x = G.level == 0x19 ? 0x50 : 0;
+        G.org_y = G.level == 0x14 ? 0x60 : G.level == 0x19 ? 0x50 : 0;
+        return;
+    }
     if (G.you) {
         int x = G.you->x - 0x8C, y = G.you->y - 0x4C;
         x = x < 0 ? 0 : x > G.max_x - 320 ? G.max_x - 320 : x;
@@ -844,6 +862,7 @@ void game_end(void)
         }
     }
     free_dead();
+    free(G.torch_change);
     for (int i = 0; i < IMG_SETS; i++)
         spriteset_free(&G.sets[i]);
     memset(&G, 0, sizeof G);

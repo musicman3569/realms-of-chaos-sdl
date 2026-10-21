@@ -390,7 +390,7 @@ priority, an EXPLODERSPAWNER (sparks or blood over its box for twice its height 
 OFFKILLER, and a prize (type 0x14, priority 0xe5, CollectID[GenericVar[1]]): a statue's own
 (its GenericVar[0]; 0x1c-0x20 are the priced magic items), else `FRANDOM(0x1b)`: 0 poison
 (only on the hard difficulties), 1-4 a potion, 5-15 a coin, 16-26 bigger coins. The bosses
-(priorities 0x3c, 0x47, 0x4a, 0x4c, 0x66) have their own deaths. DOCOLLECTABLE bounces the
+(priorities 0x3c, 0x47, 0x4a, 0x4c, 0x66) have their own deaths (see "The bosses"). DOCOLLECTABLE bounces the
 prize once and lets the player pick it up (DOFLYINGSHIT flies it to the corner and counts it:
 coins 50-1000 points, gems 1 / 5, a potion 2 hit points and the cure, poison one hit point and
 poisoned); after about 1000 ticks it blinks 13 times and goes.
@@ -651,6 +651,50 @@ SKELDIE: the skeleton floats up to `_OrgY + 0x14`; every 45 ticks (GenericVar[1]
 sounds, two explosions and four bones (first 60 rounds), hidden for 25 ticks with the view down a
 pixel (first 45); after 71 rounds `_quitflag` 3. The head sees SKELDIE and dies too (ENEMYHIT with
 GenericVar[3] 3, `_EnemyFound` taken back).
+
+**The demon and the ending** (demon, level 25, RXDEMONF.C; the DEMON* animators in RXDEAD.C call
+FDEMON*). The view starts at (0x50, 0x50) (NEWLEVEL: levels 15 and 27+ start at (0, 0), level 20
+at (0, 0x60)), and the camera, DEMONCENTER (type 8, its own rate at 22000), keeps the dead zone the
+whole view, pulls `_OrgY` back to 0x50 and keeps the player between `_OrgX + 10` and `+ 300`; above
+difficulty 1 the ground at x 0xbe-0xd7 hurts. The demon (type 0x5f, priority 0x4c, `_Boss`; DemStrID
+straight on within 0x33 pixels of the player, else DemSideID) is only a face: its body is
+background tiles in colours 128-239. NEWLEVELSETUP reads the PALCH table `rocdemfd.txt`
+(READITEM 0x62 into `_TorchChange`: 16 steps x 336 bytes), and DEMONWAIT, 500 ticks after the
+player lands, rebuilds `_LevelPal` (469b:12c0) from `_VirtPal` with step GenericVar[1] (16 down
+to 0) for colours 128-239 at each carry of 0x400, then makes the face hittable and shows the bar.
+DEMONFACE slides it to x 0x9c + (player x - `_OrgX`) / 16 and shows frame 1 (the mouth open,
+shaking the view) while the roar's sound (GenericVar[2]) plays. Each attack waits (GenericVar[0]
+0) and then runs: DEMONSPIT, eight fireballs (type 0x4c, DODRAGONFIRE, xSpeed |dx| * 0xb4) 300
+ticks apart; DEMONSUMMON, two fire boars (type 0x51, Boar3ID) from the view's sides, killed after
+0x1000 ticks; DEMONSPOUT, two sweeps of 13 drops 0x14 apart from the view's top: spikes (type
+0x1c, DemSpikID, DOPROJECTILE kind 6, which on this level lands as a DOCAVEHOLE flame vent) or 1
+in `_DiffMode + 3` a potion; DEMONDROP, a boulder (type 0x50) at the view's left or 0x104 right of
+it; then DEMONSPIT again. A hit (DemStrID / DemSideID[4]) ends the wait. ENEMYHIT (priority 0x4c)
+starts DEMONDIE (GenericVar[3] / [4] the place it was hit, so the bar reads beaten), kills the
+boars and sends the spikes off (OFFKILLER).
+
+FDEMONDIE (the ending) decompiles into garbage (Ghidra mis-segments its near jumps), so it was read
+from a raw disassembly; its jitter is a 7-case `switch` (table at 2128:104b) on GenericVar[5].
+Stages (GenericVar[0]): 0 shaking about the hit point in a random direction (picked at each
+carry of 20000, with the view down a pixel and an explosion or a ball of fire, type 0x4c with
+GenericVar[0] 1, 9 times in 30); after 4000 ticks GETPALETTE / SETPALETTE fade every component up
+a step at each carry of 0x800 to white; 1 AOPEN(0xb4) reads `demgone.bg` over the background
+tiles (0xf000 bytes into `_BgBuffer`, 0x6400 into `_Bg2Buffer`, MAPUPDATE redraws); 2 the demon
+hidden, the player frozen at (0x132, 0xd7) as MalWalkID[9] whoever plays, and FemWalkID[9] (type
+0x24, frozen) at x 0x154; 3 after 500 ticks a fade back down to `_LevelPal`; 4 after 1000 ticks a
+light (ChimFireID, hidden) at view (0x8c, 0x3c); 5 sparks (type 0x0e, POWERUPSPARKS: they fly
+until they reach the light, or elsewhere the player) from the view's edges at each carry of 6000,
+the light showing at 600 ticks (blinking) as ChimFireID[3] and growing to [0] at 1500; 6 after 1000
+ticks it sinks (0x640) and drifts right (800) until 10 pixels above the player's head; 7 after
+2000 ticks `_quitflag` 3.
+
+**Boulders** (RXPLAT.C:1182 ROLLINGBOULDER, priority 0x97, solid through MAINTAINPLATFORM /
+MAINTAINBLOCK). GenericVar[0] 0 dropped, 1 bounced, 2 rolling; GenericVar[2] 0 on the ground, 1
+falling (ySpeed + 0xb4 to 32000), 2 rising (GenericVar[4] ticks, then slowing). The first landing
+shakes the view (a ROSSSHAKE) and bounces it at -10000; then it rolls a pixel at each carry of
+10000, turning backwards through DeadRck1ID[7..0], following slopes, falling off ledges, and
+stops at a wall or the map's edge on the ground (STILLBOULDER, Update 0x32). A player riding it is
+carried along at 13000. On level 25 it goes once off the screen.
 
 ## Tiles: types and collision
 

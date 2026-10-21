@@ -85,3 +85,27 @@ int do_flying_shit(obj_t *o)
     obj_kill(o);
     return 0;
 }
+
+/* RXGEMS.C:294 POWERUPSPARKS: a spark flying at its xSpeed / ySpeed (a pixel at each carry)
+ * until it reaches the player, or on level 25 the demon's light, where it goes. */
+int power_up_sparks(obj_t *o)
+{
+    if (carry(&o->xpart, iabs16(o->xspeed))) {
+        if (o->xspeed < 0)
+            o->x--;
+        else
+            o->x++;
+    }
+    if (carry(&o->ypart, iabs16(o->yspeed))) {
+        if (o->yspeed < 0)
+            o->y--;
+        else
+            o->y++;
+    }
+    const obj_t *t = G.level == 0x19 ? G.boss : G.you;
+    if (!t || (uint16_t)(t->x + t->xsize) < o->x || (uint16_t)(o->x + o->xsize) < t->x ||
+        (uint16_t)(t->y + t->ysize) < o->y || (uint16_t)(o->y + o->ysize) < t->y)
+        return 0;
+    obj_kill(o);
+    return 0;
+}

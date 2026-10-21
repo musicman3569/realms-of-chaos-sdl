@@ -900,3 +900,138 @@ int spin_plat_die(obj_t *o)
         maintain_block(o);
     return 0;
 }
+
+/* A boulder landing hard: the view shakes, with a crash. */
+static void boulder_crash(obj_t *o)
+{
+    spawn_shake();
+    play_sample(0x73, o);
+}
+
+/* RXPLAT.C:1182 ROLLINGBOULDER: a boulder (type 0x50, priority 0x97, a solid platform; also run
+ * by GENERICUP / GENERICFALL in the air). GenericVar[0]: 0 dropped, 1 bounced once, 2 rolling;
+ * GenericVar[2]: 0 on the ground, 1 falling, 2 rising (GenericVar[4] ticks at its ySpeed, then
+ * slowing). It moves through MAINTAINPLATFORM (GenericVar[5]'s bits), turning backwards through
+ * DeadRck1ID[7..0] (every 0x2d ticks after the bounce, else 0x41). The first landing shakes the
+ * view and bounces it (ySpeed -10000); from the second it rolls in its direction at 10000 (with a
+ * rumble), following slopes and falling off ledges, until a wall or the map's edge stops it on
+ * the ground (STILLBOULDER). A player riding it is carried along at 13000. On level 25 it goes
+ * once off the screen (except while falling). */
+int rolling_boulder(obj_t *o)
+{
+    obj_t *you = G.you;
+    o->gv[5] &= 0x60;
+    if (G.level == 0x19 && o->gv[2] != 1 && !obj_visible(o)) {
+        obj_kill(o);
+        return 0;
+    }
+    if (o->counter > (o->gv[0] == 1 ? 0x2D : 0x41)) {
+        o->counter = 0;
+        o->frame_no = o->frame_no == 0 ? 7 : (uint8_t)(o->frame_no - 1);
+        o->image = G.img[IMG_DEADRCK1 + o->frame_no];
+    }
+    if (o->gv[2] == 1) {
+        o->yspeed = (int16_t)(o->yspeed + 0xB4);
+        if (o->yspeed > 32000)
+            o->yspeed = 32000;
+    } else if (o->gv[2] == 2) {
+        if (o->gv[4] == 0) {
+            o->yspeed = (int16_t)(o->yspeed + 0xB4);
+            if (o->yspeed > 0)
+                o->gv[2] = 1;
+        } else {
+            o->gv[4]--;
+        }
+    }
+    if (o->gv[2] != 0 && carry(&o->ypart, iabs16(o->yspeed))) {
+        if (o->yspeed < 0) {
+            o->gv[5] |= MOVE_UP;
+        } else if (o->yspeed > 0) {
+            can_move(o);
+            if (o->down_offset == 1) {
+                o->gv[5] |= MOVE_DOWN;
+            } else {
+                boulder_crash(o);
+                o->gv[2] = 0;
+                o->yspeed = 0;
+            }
+        }
+    }
+    bool stepped = false; /* a step of the roll was due (blocked or not) */
+    if (o->gv[0] == 0) {
+        if (o->gv[2] == 0) {
+            o->gv[0]++;
+            o->gv[2] = 2;
+            o->gv[4] = 0x5A;
+            o->yspeed = -10000;
+        }
+    } else if (carry(&o->xpart, 10000)) {
+        bool way;
+        if (o->xdir == 0) {
+            way = can_go_left(o) && (G.level == 0x0F ? (uint16_t)(G.org_x + 0x12) < o->x
+                                                      : o->x >= 0x15);
+            if (way)
+                o->gv[5] |= MOVE_LEFT;
+        } else {
+            way = can_go_right(o) &&
+                  (uint16_t)(o->x + o->xsize) < (G.level == 0x0F ? (uint16_t)(G.org_x + 0x130)
+                                                                 : (uint16_t)(G.lv->cols * 16 - 1));
+            if (way)
+                o->gv[5] |= MOVE_RIGHT;
+        }
+        if (!way && o->down_offset != 1) {
+            o->update = 0x32;
+            o->animator = A_STILLBOULDER;
+            sound_link_kill(o->gv[3]);
+        }
+        stepped = true;
+    }
+    if (stepped && o->gv[0] == 1) {
+        if (o->gv[2] == 0)
+            o->gv[0]++;
+    } else if (stepped && o->gv[0] == 2) {
+        can_move(o);
+        if (!sound_link_active(o->gv[3]))
+            o->gv[3] = 0;
+        if (o->gv[3] == 0 && o->animator != A_STILLBOULDER && o->down_offset != 1)
+            o->gv[3] = (int16_t)play_sample(0x36, o);
+        if (o->down_offset > 10) {
+            o->gv[5] |= MOVE_DOWN;
+        } else if (o->down_offset == 1) {
+            sound_link_kill(o->gv[3]);
+            o->gv[2] = 1;
+        }
+    }
+    maintain_platform(o);
+    if (!(o->gv[5] & RIDER)) {
+        if (you && obj_overlap(you, o))
+            maintain_block(o);
+    } else if (you && carry((uint16_t *)&o->gv[1], 13000)) {
+        you->xspeed = o->xdir == 0 ? -13000 : 13000;
+        if (*you_hp() == 0) {
+            you->yspeed = -14000;
+            you->gv[4] = 0x5A;
+            generic_begin_jump(you);
+        } else {
+            you->animator = A_YOUBEGINJUMP;
+            you->gv[4] = 0x3C;
+            you->yspeed = -2000;
+        }
+    }
+    return 0;
+}
+
+/* RXPLAT.C:1327 STILLBOULDER: a boulder at rest, still solid; one stopping at x 0x8e0 (the end
+ * of its run on level 17 / 19) lands with a crash. */
+int still_boulder(obj_t *o)
+{
+    o->gv[5] &= 0x60;
+    if (o->x == 0x8E0 && o->gv[0] != 3) {
+        boulder_crash(o);
+        o->gv[0] = 3;
+    }
+    maintain_platform(o);
+    if (!(o->gv[5] & RIDER) && G.you && obj_overlap(G.you, o))
+        maintain_block(o);
+    return 0;
+}

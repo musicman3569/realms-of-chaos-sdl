@@ -24,6 +24,7 @@ add_executable(roc
     src/rxmush.c
     src/rxcastle.c
     src/rxdead.c
+    src/rxdemon.c
     src/rxross.c
     src/rxboss.c
     src/rxyou.c

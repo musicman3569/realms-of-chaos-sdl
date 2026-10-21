@@ -169,7 +169,7 @@ void setup_obj(obj_t *o, uint8_t type)
         } else if (lv == 0x19) {
             o->flags &= 0xBF;
             o->xspeed = 22000;
-            o->animator = 0x15C7; /* DEMONCENTER */
+            o->animator = A_DEMONCENTER;
         }
         break;
     case 0x0B: /* arrow sign */
@@ -699,6 +699,22 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[5] = 0;
         o->gv[0] = 0;
         o->update = 0x1000;
+        o->gv[5] |= 0x40;
+        break;
+    case 0x50: /* a boulder (the demon drops them; BOULDERSPAWNER on levels 17 / 19) */
+        o->surface_flags |= 0x10;
+        o->flags |= OF_PLACED;
+        o->surface_flags |= 1;
+        o->update = 0x1000;
+        o->priority = 0x97;
+        o->animator = A_GENERICBEGINFALL;
+        o->frame_no = 0;
+        o->gv[0] = 0;
+        o->gv[2] = 1;
+        o->gv[3] = 0;
+        o->gv[5] = 0;
+        o->counter = 0;
+        o->yspeed = 0;
         o->gv[5] |= 0x40;
         break;
     case 0x51: /* boar */
