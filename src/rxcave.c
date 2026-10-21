@@ -138,3 +138,12 @@ int do_drop(obj_t *o)
     obj_kill(o);
     return 0;
 }
+
+/* RXCAVE.C:80 DOTORCH (type 0x2c, level 13's torches, which INITLEVEL makes): a flame that
+ * stays at view y 0x81 as the cave scrolls, flickering through TorchID. */
+int do_torch(obj_t *o)
+{
+    o->y = (uint16_t)(G.org_y + 0x81);
+    next_frame(o, IMG_TORCH);
+    return 0;
+}

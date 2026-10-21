@@ -201,6 +201,14 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[1] = 10;
         o->yspeed = 0;
         break;
+    case 0x11: /* BOULDERSPAWNER (levels 17 and 19) */
+        o->animator = A_BOULDERSPAWNER;
+        o->priority = 6;
+        o->gv[0] = 0;
+        o->update = 0x1000;
+        if (lv == 0x13)
+            G.window_xsize = 0x140;
+        break;
     case 0x16: /* background stars */
         o->image = NULL;
         o->animator = A_DOBACKSTARS;
@@ -756,6 +764,30 @@ void setup_obj(obj_t *o, uint8_t type)
         o->animator = A_GENERICBEGINJUMP;
         o->priority = 0x4B;
         o->gv[5] = 0x0F;
+        break;
+    case 0x29: /* AUTOSCROLLER (levels 1, 3 and 22 on the hard difficulties) */
+        o->flags |= 1;
+        o->animator = A_AUTOSCROLLER;
+        o->priority = 5;
+        G.window_xsize = 0x140;
+        o->gv[0] = 0;
+        o->counter = 0;
+        o->yspeed = 0x1000;
+        break;
+    case 0x2B: /* CAVESCROLLER (level 13) */
+        o->flags |= 1;
+        o->animator = A_CAVESCROLLER;
+        o->gv[0] = o->gv[1] = o->gv[2] = o->gv[3] = 0;
+        o->yspeed = 0;
+        G.center_off = -2;
+        break;
+    case 0x2C: /* a torch (level 13) */
+        o->flags |= OF_PLACED;
+        o->priority = 1;
+        o->animator = A_DOTORCH;
+        o->frame_count_max = 0x50;
+        o->max_frames = 2;
+        o->anim_inc = 0;
         break;
     case 0x5B: /* the raft's front piece */
         o->animator = A_NULLANIMATOR;

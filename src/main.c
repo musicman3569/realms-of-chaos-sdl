@@ -1,7 +1,7 @@
 /* Realms of Chaos port: plays a level (the player's movement and the objects ported so far).
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
- *            [--trace N] [--female] [--gems N] [--boss-hits N] [--invincible]
+ *            [--trace N] [--female] [--gems N] [--boss-hits N] [--invincible] [--difficulty N]
  *            [--hold ACTION:FROM-TO,...] [--sweep] [--list] [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
@@ -16,7 +16,8 @@
  * range of ticks, e.g. "right:0-600,jump:200-260"; --trace N prints the player's state every N
  * ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
  * starts with N gems; --boss-hits N starts the level's boss with N hits taken (GenericVar[3]);
- * --invincible sets _YouInvincible (nothing hurts the player);
+ * --invincible sets _YouInvincible (nothing hurts the player); --difficulty N sets _DiffMode
+ * (0-4, default 2);
  * --sweep moves the player from its start to the map's right edge during
  * the run (to wake every object); --list prints every object. */
 #include "archive.h"
@@ -49,6 +50,7 @@ typedef struct {
     long trace;
     int gems;
     int boss_hits;
+    int difficulty;
     hold_t holds[MAX_HOLDS];
     int hold_count;
     const char *screenshot;
@@ -84,6 +86,7 @@ static bool parse_holds(const char *s, options_t *o)
 static bool parse_args(int argc, char **argv, options_t *o)
 {
     memset(o, 0, sizeof *o);
+    o->difficulty = 2;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (!strcmp(a, "--level") && i + 1 < argc)
@@ -107,6 +110,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->female = true;
         else if (!strcmp(a, "--invincible"))
             o->invincible = true;
+        else if (!strcmp(a, "--difficulty") && i + 1 < argc)
+            o->difficulty = atoi(argv[++i]);
         else if (!strcmp(a, "--gems") && i + 1 < argc)
             o->gems = atoi(argv[++i]);
         else if (!strcmp(a, "--boss-hits") && i + 1 < argc)
@@ -370,7 +375,7 @@ int main(int argc, char **argv)
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
                         "[--no-objects] [--ticks N] [--trace N] [--female] [--gems N] "
-                        "[--boss-hits N] [--invincible] [--hold ACTION:FROM-TO,...] [--sweep] "
+                        "[--boss-hits N] [--invincible] [--difficulty N] [--hold ACTION:FROM-TO,...] [--sweep] "
                         "[--list] [--screenshot out.png]\n");
         return 2;
     }
@@ -387,7 +392,7 @@ int main(int argc, char **argv)
 
     level_t lv;
     memset(&lv, 0, sizeof lv);
-    game_new(!opt.female);
+    game_new(!opt.female, (uint8_t)opt.difficulty);
     Inv.gems = (uint16_t)opt.gems;
     invincible = opt.invincible;
     if (!start_level(&lv, &arc, &list, opt.level, err, sizeof err)) {

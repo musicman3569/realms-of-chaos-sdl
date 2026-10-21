@@ -87,6 +87,9 @@ int frog_plat(obj_t *o);
 int spinning_platform(obj_t *o);
 int no_spin_plat(obj_t *o);
 int spin_plat_die(obj_t *o);
+int autoscroller(obj_t *o);
+int cave_scroller(obj_t *o);
+int boulder_spawner(obj_t *o);
 int rolling_boulder(obj_t *o);
 int still_boulder(obj_t *o);
 
@@ -95,6 +98,7 @@ int do_cave_spikes(obj_t *o);
 int do_cave_fall_spikes(obj_t *o);
 int do_torch_puff(obj_t *o);
 int do_drop(obj_t *o);
+int do_torch(obj_t *o);
 
 /* rxskel.c */
 int do_boar(obj_t *o);

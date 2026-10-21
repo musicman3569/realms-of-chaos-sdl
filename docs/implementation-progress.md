@@ -76,6 +76,8 @@ build/roc.exe game/ROC.EXE --level 0 --female --gems 10 --player 470,231 --ticks
 # headless: the goblin boss with an invincible player (--invincible sets _YouInvincible)
 build/roc.exe game/ROC.EXE --level 16 --invincible --ticks 30000 --list --screenshot out.png
 # headless: the Ross fight, the boss starting with 165 of its 170 hits taken (--boss-hits)
+# headless: level 1 on difficulty 3 (_DiffMode; the default is 2), where the view scrolls by itself
+build/roc.exe game/ROC.EXE --level 1 --difficulty 3 --invincible --ticks 6000 --list --screenshot out.png
 build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
 ```
 
@@ -270,6 +272,16 @@ player's position and animator, the inventory and the level's counters at the en
   without it (`demgone.bg`) with both heroes, sparks gather into a light that sinks to them,
   and the level ends (`_quitflag` 3; the game loop then goes on to level 26). A sweep of all 29
   levels reaches no unported animator.
+- Port, INITLEVEL's level objects (notes "Scrollers"): in `src/rxplat.c` AUTOSCROLLER (type
+  0x29: levels 1, 3 and 22 above difficulty 2), CAVESCROLLER (type 0x2b, level 13) and
+  BOULDERSPAWNER (type 0x11, levels 17 and 19); in `src/rxcave.c` DOTORCH (type 0x2c, level 13's
+  torches); INITLEVEL now also makes level 11 / 12's 16 night stars. `--difficulty N` sets
+  `_DiffMode`. Verified headless: on level 1 at difficulty 3 the view scrolls right at 36 px/s
+  and pushes a standing player along until a wall crushes them; on level 13 the view rises to
+  the top, bounces, pauses, sinks slowly to y 100 and rises again, the player and the torches
+  riding its bottom edge; level 17's four boulders drop as the view passes and roll to rest
+  (one at x 0x8e0 with a crash); level 19 scrolls left by itself and drops its boulders.
+  Sweeps of all 29 levels (and of levels 1, 3, 22 at difficulty 4) reach no unported animator.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -279,11 +291,7 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **Unported leftovers** (next): every behaviour a level reaches is ported now (a `--sweep`
    run lists any animator that isn't; it needs `--screenshot`, or it opens a window).
-   **INITLEVEL** (RXOBJF.C:391, ported in `game_start`) still lacks these spawns, which is
-   why the sweeps never reach them: type 0x29 on levels 1, 3 and 22 above difficulty 2; level
-   13's 0x2b (CAVESCROLLER) and its torches (0x2c, DOTORCH); 16 background stars (0x16) on
-   levels 11 and 12; type 0x11 (BOULDERSPAWNER, whose boulders ROLLINGBOULDER already rolls)
-   on levels 17 and 19. DOTORCH (type 0x2c) isn't placed by INITOBJ either.
+   INITLEVEL is complete except the special item's object (type 0x37 with `_LightningFlag`).
    `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation

@@ -54,7 +54,7 @@ enum {
     A_DOKNIFEGUARD = 0x0291, A_DOGUARDKNIFE = 0x0699, A_DOBOMBGUARD = 0x0761, A_DOBOMB = 0x0857, A_BOMBEXPLODER = 0x08fc, A_DOBACKSTARS = 0x09e5, A_ROSSWAIT = 0x0b92,
     A_ROSSCRASH = 0x0ba1, A_ROSSPIECE = 0x0bb0, A_ROSSATTACK = 0x0bce, A_ROSSTHROW = 0x0bdd,
     A_ROSSLUNGE = 0x0bec, A_ROSSSWORD = 0x0bfb, A_ROSSSHAKE = 0x0c0a, A_ROSSKNIFE = 0x0c19,
-    A_ROSSDIE = 0x0c28, A_ROSSCLEAR = 0x0c37, A_BOSSHITPOINTS = 0x54cb, A_DODROP = 0x0c46, A_DOCATSKELETON = 0x0d95,
+    A_ROSSDIE = 0x0c28, A_ROSSCLEAR = 0x0c37, A_BOSSHITPOINTS = 0x54cb, A_DODROP = 0x0c46, A_DOTORCH = 0x0d75, A_DOCATSKELETON = 0x0d95,
     A_DOCAVESPIKES = 0x0da4, A_DOCAVEFALLSPIKES = 0x0ea0, A_DOCAVESPIDER = 0x0fd9,
     A_DOGARGOYLE = 0x0fe8, A_DOGARGOYLEFIRE = 0x0ff7, A_DOCAVEHOLE = 0x1006,
     A_DOTORCHPUFF = 0x1015, A_DOWISP = 0x10b4, A_DOBOAR = 0x1513,
@@ -77,13 +77,13 @@ enum {
     A_BOSSHEADSPIT = 0x686c, A_BOSSHEADSHAKE = 0x687b, A_BOSSHEADFLOAT = 0x688a,
     A_BOSSHEADBOUNCE = 0x6899, A_BOSSHEADSPAWN = 0x68a8, A_BOSSHEADRETURN = 0x68b7,
     A_BOSSHEADDIE = 0x68c6, A_DOSPITTLE = 0x68d5, A_DOSPITTLE2 = 0x68e4, A_BOSSSHAKE = 0x68f3,
-    A_SPINNINGPLATFORM = 0xaa91, A_NOSPINPLAT = 0xabdd, A_SPINPLATDIE = 0xac83, A_CRUSHERCENTER = 0x74c8, A_DOSPOREHOLE = 0x725c, A_DOSPORE = 0x7357, A_DOCHAIN = 0x7a52,
+    A_SPINNINGPLATFORM = 0xaa91, A_NOSPINPLAT = 0xabdd, A_SPINPLATDIE = 0xac83, A_CRUSHERCENTER = 0x74c8, A_DOSPOREHOLE = 0x725c, A_DOSPORE = 0x7357, A_DOCHAIN = 0x7a52, A_AUTOSCROLLER = 0x7cb1, A_CAVESCROLLER = 0x7f3b,
     A_DOCHAINEND = 0x7c96, A_FROGPLAT = 0x849b, A_FLOATINGPLATFORM = 0x86a4,
     A_DOCONTAINERBOMB = 0x8893, A_CRUMBLINGPLATFORM = 0x8a20, A_CRUMBLEPLATSHAKE = 0x8a6c,
     A_CRUMBLEPLATFALL = 0x8bd7, A_DOPULLEY = 0x8d31, A_PULLYPLATWAIT = 0x8de5,
     A_PULLYPLATMOVE = 0x8e2b, A_PULLYPLATRETURN = 0x8fbc, A_PULLYPLATDIP = 0x9144,
     A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c, A_BRIKSHAKE = 0x9659,
-    A_SWAMPRAFT = 0x9744, A_ROLLINGBOULDER = 0xa63a, A_STILLBOULDER = 0xaa0e, A_MUDMANWALK = 0xafca,
+    A_SWAMPRAFT = 0x9744, A_BOULDERSPAWNER = 0xa3dc, A_ROLLINGBOULDER = 0xa63a, A_STILLBOULDER = 0xaa0e, A_MUDMANWALK = 0xafca,
     A_DOMOSQUITO = 0xafd9, A_DOFROG = 0xafe8, A_FROGLAUNCH = 0xaff7,
     A_FROGLAND = 0xb006, A_DRAGONCENTER = 0xb0df, A_DODRAGONBOB = 0xb0ee,
     A_DODRAGONSPIT = 0xb0fd, A_DODRAGONFIRE = 0xb10c, A_DODRAGONBOOM = 0xb11b,
@@ -192,7 +192,8 @@ extern game_t G;
 
 /* Start a level: load the sprite sets its object list names and create the objects
  * (LOADOBJ / INITOBJ / INITLEVEL's part for the level objects). */
-void game_new(bool male);                           /* a new game: character, inventory */
+void game_new(bool male, uint8_t difficulty);       /* a new game: character, _DiffMode 0-4,
+                                                     * inventory */
 bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen);
 void game_end(void);
 void game_view_on_player(void);                     /* NEWLEVEL's starting view */

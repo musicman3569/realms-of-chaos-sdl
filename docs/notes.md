@@ -696,6 +696,34 @@ shakes the view (a ROSSSHAKE) and bounces it at -10000; then it rolls a pixel at
 stops at a wall or the map's edge on the ground (STILLBOULDER, Update 0x32). A player riding it is
 carried along at 13000. On level 25 it goes once off the screen.
 
+## Scrollers
+
+INITLEVEL's level objects that move the view by themselves (RXPLAT.C). Each pushes a player the
+view leaves behind (following the slopes; off a vine) and crushes them against a wall (YOUCRUSH);
+the original loops until the player is back in the view, which would hang on a player who can't
+move, so the port bounds those loops. Nothing moves while the player is dead or `_LightningFlag`
+is set.
+
+- **AUTOSCROLLER** (type 0x29, priority 5; levels 1, 3 and 22 above difficulty 2, and level 14
+  after 700 ticks once the player lands if one is placed there): the view scrolls right a pixel
+  at each carry of 0x1000 (36 a second) to the map's end, `_WindowXsize` 0x140; the player is
+  kept between `_OrgX + 5` and `_OrgX + 0x12f`.
+- **BOULDERSPAWNER** (type 0x11, priority 6; levels 17 and 19): four boulders (type 0x50 at y 0x14)
+  from the tables at DS:048a (level 17: dropped once `_OrgX` passes the first number) and DS:04a2
+  (level 19: once it's below it): (view x, boulder x, xDir). Level 19 is played right to left:
+  the view scrolls left a pixel at each carry of 0x1000.
+- **CAVESCROLLER** (type 0x2b, level 13, `_CenterOff` -2 so SCREENCENTER leaves it alone): the view
+  moves vertically by itself, and its bottom edge (view y 0xc0) is a floor that the player, prizes,
+  spikes and debris (priorities 0xe5, 0x29, 0xdc, 0xf0, 0xb9, 0x65) stand on. Flags bit 0 set is
+  rising (speeding up by 0x50 a tick to 15000) to `_OrgY` 0; GenericVar[2] counts the trips down:
+  the first starts at 7000 and slows by 0x5a until it turns back up, the next waits 200 ticks and
+  sinks at 0x1000 to `_OrgY` 100, waits 0x96 and rises again. A step happens when yPart's sum
+  carries (or the speed is 0). It carries along torches (DOTORCH, which keep view y 0x81),
+  fireballs, whip segments, explosions, gargoyle fire, the player when not on the cave's own
+  ground (GenericVar[3] 0), loose spikes and settled blood and prizes. Rising, a player under a
+  ceiling is slid out from under it, made to crouch, or crushed. Past x 0x8fc at the top it stops
+  (GenericVar[1]).
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

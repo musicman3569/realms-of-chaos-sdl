@@ -1035,3 +1035,248 @@ int still_boulder(obj_t *o)
         maintain_block(o);
     return 0;
 }
+
+/* The player follows the slopes under them (CANMOVE's offsets, as the walkers do). */
+static void you_follow_slope(obj_t *you)
+{
+    can_move(you);
+    if (you->up_offset > 10)
+        player_up((uint8_t)(you->up_offset - 10), you);
+    if (you->down_offset > 10)
+        player_down((uint8_t)(you->down_offset - 10), you);
+}
+
+static bool you_room_right(const obj_t *you)
+{
+    return G.level == 0x0F ? (uint16_t)(you->x + 0x0E) < (uint16_t)(G.org_x + 0x130)
+                           : (uint16_t)(you->x + 0x0E) < (uint16_t)(G.lv->cols * 16 - 1);
+}
+
+static bool you_room_left(const obj_t *you)
+{
+    return G.level == 0x0F ? (uint16_t)(G.org_x + 0x12) < you->x : you->x >= 0x19;
+}
+
+/* The original loops until the player is back in the view; a guard keeps a player who can't
+ * move from hanging the port (the original would hang there). */
+enum { PUSH_GUARD = 400 };
+
+/* RXPLAT.C:11 AUTOSCROLLER (type 0x29; INITLEVEL makes one on levels 1, 3 and 22 above
+ * difficulty 2): the view scrolls right by itself, a pixel at each carry of 0x1000 (about 36
+ * a second), to the map's end. A player left behind is pushed along (off a vine, following the
+ * slopes) and crushed against a wall (YOUCRUSH); one ahead of the view is pulled back. On
+ * level 14 it starts 700 ticks in, once the player has landed. Nothing moves while the player
+ * is dead or flying (_LightningFlag). */
+int autoscroller(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (!you)
+        return 0;
+    if (G.level == 0x0E && o->gv[0] == 0 && o->counter > 700 && (you->gv[5] & 1))
+        o->gv[0] = 1;
+    if (G.lightning_flag || *you_hp() == 0 || (G.level == 0x0E && o->gv[0] == 0))
+        return 0;
+    for (int n = 0; n < PUSH_GUARD && you->x < (uint16_t)(G.org_x + 5) &&
+                    you->animator != A_NULLANIMATOR && you->animator != A_YOUCRUSH; n++) {
+        if (G.game_flags & 1) {
+            G.game_flags &= 0xFFFE;
+            you->max_frames = 5;
+            you->frame_count_max = 0x32;
+            you->animator = A_YOUBEGINFALL;
+        }
+        you_follow_slope(you);
+        if (can_go_right(you) && you_room_right(you))
+            player_right(1, you);
+        else if (you->animator != A_NULLANIMATOR && you->animator != A_YOUCRUSH)
+            you->animator = A_YOUCRUSH;
+    }
+    for (int n = 0; n < PUSH_GUARD && (uint16_t)(G.org_x + 0x12F) < you->x; n++) {
+        you_follow_slope(you);
+        if (can_go_left(you) && you_room_left(you))
+            player_left(1, you);
+    }
+    if (carry(&o->xpart, 0x1000) && G.org_x < (uint16_t)(G.lv->cols * 16 - 0x141))
+        scroll_right(1);
+    return 0;
+}
+
+/* Objects that CAVESCROLLER carries along with the view. */
+static bool cave_carries(const obj_t *p, const obj_t *scroller)
+{
+    const uint16_t a = p->animator;
+    if (a == A_DOTORCH || a == A_DOFIREBALL || a == A_DOWHIP || a == A_DOEXPLOSION ||
+        a == A_DOGARGOYLEFIRE)
+        return true;
+    if (p == G.you && scroller->gv[3] == 0)
+        return true;
+    if (p->priority == 0x65 && a != A_DOCAVEFALLSPIKES)
+        return true;
+    return (p->gv[5] & 1) &&
+           !(map_cell((unsigned)(p->y + 0x12) >> 4, (unsigned)(p->x + 8) >> 4) & 0x800) &&
+           (a == A_DOBLOOD || a == A_DOCOLLECTABLE);
+}
+
+/* RXPLAT.C:64 CAVESCROLLER (type 0x2b, level 13): the view rises and sinks over the cave by
+ * itself, and its bottom edge (view y 0xc0) is a floor: the player and the loose things on it
+ * (prizes, spikes, debris...) ride it (GenericVar[3] 0 while the player isn't on the cave's
+ * own ground). Flags bit 0 set means rising: it speeds up by 0x50 a tick to 15000 until the
+ * view's top reaches 0; then it sinks (GenericVar[2] counts the trips: the first slows down by
+ * 0x5a and turns back up, the next sink at 0x1000 after a 200-tick pause) to view y 100, and
+ * after a 0x96-tick pause rises again. While rising, a player under a ceiling is slid out from
+ * under it, made to crouch, or crushed. Past x 0x8fc at the top it stops (GenericVar[1]). */
+int cave_scroller(obj_t *o)
+{
+    obj_t *you = G.you;
+    G.center_off = -2;
+    G.window_xsize = 0x2A;
+    G.window_ysize = 200;
+    set_scroll_bounds(200, 0x2A);
+    if (!you)
+        return 0;
+    const uint16_t floor = (uint16_t)(G.org_y + 0xC0);
+    for (obj_t *p = G.list[LIST_MAIN]; p; p = p->next) {
+        const int16_t pr = p->priority;
+        if ((p == you || pr == 0xE5 || pr == 0x29 || pr == 0xDC || pr == 0xF0 || pr == 0xB9 ||
+             pr == 0x65) &&
+            floor < (uint16_t)(p->y + p->ysize)) {
+            if (p->image)
+                p->y = (uint16_t)(floor - p->ysize);
+            p->down_offset = 0;
+            p->gv[5] |= 1;
+            if (p == you) {
+                you->surface_flags |= 2;
+                o->gv[3] = 0;
+            }
+        }
+    }
+    if (you->y < (uint16_t)(G.org_y + 3))
+        player_down(1, you);
+    if (you->animator == A_YOUJUMP || you->animator == A_GENERICJUMP) {
+        o->gv[3] = 0;
+        you->surface_flags &= 0xFD;
+    }
+    if (o->gv[1] != 0)
+        return 0;
+    if (o->gv[3] == 0 && !can_go_down(you))
+        o->gv[3] = 1;
+    if (o->gv[0] != 0) {
+        if (--o->gv[0] == 0 && !(o->flags & 1))
+            play_sample(0x97, o);
+        return 0;
+    }
+    if ((o->flags & 1) && o->yspeed < 15000) {
+        o->yspeed = (int16_t)(o->yspeed + 0x50);
+    } else if (!(o->flags & 1) && o->gv[2] == 1) {
+        const int16_t old = o->yspeed;
+        o->yspeed = (int16_t)(o->yspeed - 0x5A);
+        if (old < 0x5A) {
+            o->flags |= 1;
+            o->yspeed = 0;
+        }
+    }
+    const uint16_t old_part = o->ypart;
+    o->ypart = (uint16_t)(o->ypart + o->yspeed);
+    if (o->ypart > old_part)
+        return 0; /* no step this tick (a step is a carry, or a speed of 0) */
+    if (!(o->flags & 1)) {
+        scroll_down(1);
+        for (obj_t *p = G.list[LIST_MAIN]; p; p = p->next)
+            if (cave_carries(p, o))
+                p->y++;
+        if (G.org_y == 100) {
+            o->flags |= 1;
+            o->gv[2] = 0;
+            o->yspeed = 0;
+            o->gv[0] = 0x96;
+        }
+        return 0;
+    }
+    if (!can_go_up(you)) {
+        if (!can_go_down(you) || (you->surface_flags & 2)) {
+            const unsigned row = (unsigned)(you->y - 4) >> 4;
+            if (!(map_cell(row, (unsigned)(you->x + 6) >> 4) & 0x1000) &&
+                (map_cell(row, (unsigned)(you->x + 0x0E) >> 4) & 0x1000)) {
+                for (int n = 0; n < PUSH_GUARD && !can_go_up(you); n++)
+                    player_left(1, you);
+            } else if (!(map_cell(row, (unsigned)(you->x + 8) >> 4) & 0x1000) &&
+                       (map_cell(row, (unsigned)you->x >> 4) & 0x1000)) {
+                for (int n = 0; n < PUSH_GUARD && !can_go_up(you); n++)
+                    player_right(1, you);
+            } else if (you->ysize < 0x1A || !(you->surface_flags & 2) || Inv.hit_points[0] == 0) {
+                you->animator = A_YOUCRUSH;
+            } else {
+                you_begin_crouch(you);
+            }
+        } else {
+            player_down(1, you);
+        }
+    }
+    scroll_up(1);
+    if (o->gv[4] != 0 && !sound_link_active(o->gv[4]))
+        o->gv[4] = 0;
+    if (o->gv[4] == 0)
+        o->gv[4] = (int16_t)play_sample(0x95, o);
+    for (obj_t *p = G.list[LIST_MAIN]; p; p = p->next)
+        if (cave_carries(p, o))
+            p->y--;
+    if (G.org_y == 0) {
+        o->flags &= 0xFFFE;
+        sound_link_kill(o->gv[4]);
+        play_sample(0xA2, o);
+        if (++o->gv[2] == 1) {
+            o->yspeed = 7000;
+        } else {
+            o->gv[0] = 200;
+            o->yspeed = 0x1000;
+            if (0x8FC < you->x)
+                o->gv[1]++;
+        }
+    }
+    return 0;
+}
+
+/* Where BOULDERSPAWNER drops its four boulders (DS:048a for level 17, DS:04a2 for level 19):
+ * the view's x that sets each off, the boulder's x, and its direction (xDir). */
+static const uint16_t boulders17[4][3] = {
+    {0x5C2, 0x5C8, 1}, {0x941, 0xA4A, 0}, {0xB0C, 0xB20, 1}, {0xC53, 0xDB6, 0}};
+static const uint16_t boulders19[4][3] = {
+    {0xD8F, 0xEA1, 0}, {0xCE4, 0xCB1, 1}, {0x95D, 0xA4A, 0}, {0x5E2, 0x5E2, 1}};
+
+/* RXPLAT.C:1114 BOULDERSPAWNER (type 0x11, levels 17 and 19): drops each boulder (type 0x50 at
+ * y 0x14, ROLLINGBOULDER) once the view passes its place (rightwards on level 17, leftwards on
+ * 19). Level 19 is played right to left: the view scrolls left by itself (a pixel at each carry
+ * of 0x1000), pushing the player along like AUTOSCROLLER does. */
+int boulder_spawner(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (o->gv[0] < 4) {
+        const uint16_t *b = NULL;
+        if (G.level == 0x11 && boulders17[o->gv[0]][0] < G.org_x)
+            b = boulders17[o->gv[0]];
+        else if (G.level == 0x13 && boulders19[o->gv[0]][0] > G.org_x)
+            b = boulders19[o->gv[0]];
+        if (b) {
+            obj_t *r = spawn_obj(0x50, LIST_MAIN, G.img[IMG_DEADRCK1], b[1], 0x14);
+            r->xdir = (uint8_t)b[2];
+            o->gv[0]++;
+        }
+    }
+    if (G.level != 0x13 || !you || *you_hp() == 0 || G.lightning_flag)
+        return 0;
+    if (you->x < (uint16_t)(G.org_x + 3)) {
+        if (you->xdir == 0 || !(you->gv[5] & 1))
+            you->xspeed = 0;
+        player_right(1, you);
+    } else if ((uint16_t)(G.org_x + 0x12F) < you->x) {
+        if (you->xdir != 0 || !(you->gv[5] & 1))
+            you->xspeed = 0;
+        you_follow_slope(you);
+        if (can_go_left(you) && you_room_left(you))
+            player_left(1, you);
+        else if (you->animator != A_NULLANIMATOR)
+            you->animator = A_YOUCRUSH;
+    }
+    if (carry(&o->xpart, 0x1000) && G.org_x != 0)
+        scroll_left(1);
+    return 0;
+}

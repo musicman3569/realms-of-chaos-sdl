@@ -715,10 +715,12 @@ static int find_set(const char *name)
 }
 
 static bool play_male = true;
+static uint8_t difficulty = 2;
 
-void game_new(bool male)
+void game_new(bool male, uint8_t diff)
 {
     play_male = male;
+    difficulty = diff < 5 ? diff : 4;
     /* A new game's inventory: 4 / 6 hit points (what the level-end and death code restore),
      * the first whip and fireball. */
     memset(&Inv, 0, sizeof Inv);
@@ -733,7 +735,7 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     G.lv = lv;
     G.level = (uint8_t)lv->number;
     G.seed = 1;
-    G.diff_mode = 2;
+    G.diff_mode = difficulty;
     G.game_flags = play_male ? 4 : 0; /* _GameFlags bit 2: the male character */
     G.blood_on = 1;
     G.status_on = 1;
@@ -801,8 +803,10 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
             init_obj(f0, x, y, e->info);
     }
 
-    /* INITLEVEL (the parts ported so far): the ambient sound and camera objects, the hit
-     * points display and the gem counter (a gem and four digits), the dragon's necks. */
+    /* INITLEVEL: the ambient sound and camera objects, the hit points display and the gem
+     * counter (a gem and four digits); then each level's own objects: the scrollers, the
+     * dragon's necks, the cave's torches, the night stars, the boulders and the skeleton
+     * boss. (The special item's object, for _LightningFlag, isn't ported.) */
     if (G.level < 0x1B) {
         spawn_obj(0x5C, LIST_FORE, NULL, 0, 0);
         spawn_obj(0x08, LIST_FORE, NULL, 0, 0);
@@ -814,9 +818,24 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
                 spawn_obj(0x09, LIST_SLOW, NULL, 0, 0x10)->gv[0] = (int16_t)i;
         }
     }
+    if (G.diff_mode > 2 && (G.level == 1 || G.level == 3 || G.level == 0x16))
+        spawn_obj(0x29, LIST_FORE, NULL, 0, 0); /* AUTOSCROLLER */
     if (G.level == 10 && G.boss)
         for (int i = 0; i < 4; i++)
             spawn_obj(0x4B, LIST_MAIN, G.img[IMG_DRAGNECK], G.boss->x, (uint16_t)(G.boss->y - 4));
+    if (G.level == 0x0D) {
+        spawn_obj(0x2B, LIST_FORE, NULL, 0, 0); /* CAVESCROLLER */
+        spawn_obj(0x2C, LIST_MAIN, G.img[IMG_TORCH], 0xB0, 0xE4);
+        for (uint16_t x = 0x1F0; x < 0xA00; x = (uint16_t)(x + 0x140))
+            spawn_obj(0x2C, LIST_MAIN, G.img[IMG_TORCH], x, 0x96);
+    }
+    if (G.level == 0x0B || G.level == 0x0C)
+        for (uint16_t i = 0; i < 0x10; i++) {
+            const uint16_t x = (uint16_t)(i * 0x12 + 0x10);
+            spawn_obj(0x16, LIST_MAIN, NULL, x, frandom(0x82));
+        }
+    if (G.level == 0x11 || G.level == 0x13)
+        spawn_obj(0x11, LIST_FORE, NULL, 0, 0); /* BOULDERSPAWNER */
     if (G.level == 0x14) {
         /* the skeleton boss and its head, under the floor */
         G.enemy_in_level++;
