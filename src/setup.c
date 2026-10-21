@@ -765,6 +765,44 @@ void setup_obj(obj_t *o, uint8_t type)
         o->priority = 0x4B;
         o->gv[5] = 0x0F;
         break;
+    case 0x27: /* a bolo cat (GRABSTUFF's tile type 0x68) */
+        o->flags |= OF_RATE | OF_HITTABLE;
+        o->surface_flags |= 8;
+        o->animator = A_BOLOCATFALL;
+        o->xspeed = 0x4268;
+        o->yspeed = 0;
+        o->priority = 0x37;
+        o->gv[3] = 0;
+        o->max_frames = 5;
+        o->anim_inc = 0;
+        o->frame_count_max = 0x14;
+        o->gv[0] = 1;
+        break;
+    case 0x28: /* a bolo (or a shuriken) */
+        o->flags |= OF_RATE;
+        o->animator = A_DOBOLO;
+        o->xspeed = 0x6978;
+        o->priority = 0x1A;
+        o->anim_inc = 0;
+        o->frame_count_max = 7;
+        o->gv[2] = 0;
+        o->max_frames = lv > 3 ? 1 : 2;
+        break;
+    case 0x44: /* level 24's snake platform: x / y are its head's cell */
+        o->flags |= OF_RATE;
+        o->xspeed = 0x7D0;
+        o->animator = A_DOSNAKEPLAT;
+        o->priority = 3;
+        o->gv[0] = 0;
+        o->gv[3] = 0;
+        if (o->x == 0x1C) {
+            o->gv[1] = 0x0F;
+            o->gv[2] = 0x5E;
+        } else {
+            o->gv[1] = 0x2C;
+            o->gv[2] = 0x26;
+        }
+        break;
     case 0x29: /* AUTOSCROLLER (levels 1, 3 and 22 on the hard difficulties) */
         o->flags |= 1;
         o->animator = A_AUTOSCROLLER;

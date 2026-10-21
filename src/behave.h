@@ -52,6 +52,9 @@ uint8_t boss_max_hits(int boss);                  /* by boss: 0 Ross ... 4 the d
 /* engine.c (RXTIMERF.C) */
 int off_killer(obj_t *o);
 
+/* rxgrab.c */
+uint16_t find_bolo_pos(uint8_t dir);              /* FINDBOLOPOS: where a bolo cat lands */
+
 /* rxgems.c */
 int do_flying_shit(obj_t *o);
 int power_up_sparks(obj_t *o);
@@ -71,6 +74,11 @@ int do_gargoyle_fire(obj_t *o);
 int do_cave_hole(obj_t *o);
 int do_cave_spider(obj_t *o);
 int do_cat_skeleton(obj_t *o);
+int bolo_cat_fall(obj_t *o);
+int bolo_cat_cock(obj_t *o);
+int bolo_cat_cock2(obj_t *o);
+int bolo_cat_throw(obj_t *o);
+int do_bolo(obj_t *o);
 
 /* rxplat.c */
 int floating_platform(obj_t *o);
@@ -92,6 +100,7 @@ int frog_plat(obj_t *o);
 int spinning_platform(obj_t *o);
 int no_spin_plat(obj_t *o);
 int spin_plat_die(obj_t *o);
+int do_snake_plat(obj_t *o);
 int autoscroller(obj_t *o);
 int cave_scroller(obj_t *o);
 int boulder_spawner(obj_t *o);

@@ -1280,3 +1280,71 @@ int boulder_spawner(obj_t *o)
         scroll_left(1);
     return 0;
 }
+
+/* RXPLAT.C:1065 DOSNAKEPLAT (type 0x44, level 24; its own rate, 0x7d0): a platform made of
+ * foreground tiles that crawls along a track, like a snake. Its x / y are the head's cell and
+ * GenericVar[1] / [2] the tail's. Every fourth run the head moves on to the next cell of the
+ * track (foreground tile 0x18), which becomes solid (the floor and wall bits), and the tail moves
+ * along the body (tile 4); the four runs animate the head (0x41, 0x40, 5, 4) and the tail (5,
+ * 0x40, 0x41, gone, its cell no longer solid). When the track ends the head stays (GenericVar[3])
+ * and the rest catches up; when the body has gone, so has the platform. */
+int do_snake_plat(obj_t *o)
+{
+    const unsigned hx = o->x, hy = o->y;
+    switch (o->gv[0]) {
+    case 0: {
+        if (map_fg(hy - 1, hx) == 0x18)
+            o->y--;
+        else if (map_fg(hy + 1, hx) == 0x18)
+            o->y++;
+        else if (map_fg(hy, hx - 1) == 0x18)
+            o->x--;
+        else if (map_fg(hy, hx + 1) == 0x18)
+            o->x++;
+        else
+            o->gv[3]++;
+        if (o->gv[3] == 0) {
+            map_set_fg(o->y, o->x, 0x41);
+            map_set_cell(o->y, o->x, map_cell(o->y, o->x) | 0x800 | 0x400 | 0x200);
+        }
+        const unsigned tx = (uint16_t)o->gv[1], ty = (uint16_t)o->gv[2];
+        if (map_fg(ty - 1, tx) == 4)
+            o->gv[2]--;
+        else if (map_fg(ty + 1, tx) == 4)
+            o->gv[2]++;
+        else if (map_fg(ty, tx - 1) == 4)
+            o->gv[1]--;
+        else if (map_fg(ty, tx + 1) == 4)
+            o->gv[1]++;
+        else {
+            obj_kill(o);
+            return 0;
+        }
+        map_set_fg((uint16_t)o->gv[2], (uint16_t)o->gv[1], 5);
+        break;
+    }
+    case 1:
+        if (o->gv[3] == 0)
+            map_set_fg(hy, hx, 0x40);
+        map_set_fg((uint16_t)o->gv[2], (uint16_t)o->gv[1], 0x40);
+        break;
+    case 2:
+        if (o->gv[3] == 0)
+            map_set_fg(hy, hx, 5);
+        map_set_fg((uint16_t)o->gv[2], (uint16_t)o->gv[1], 0x41);
+        break;
+    case 3: {
+        if (o->gv[3] == 0)
+            map_set_fg(hy, hx, 4);
+        const unsigned tx = (uint16_t)o->gv[1], ty = (uint16_t)o->gv[2];
+        map_set_fg(ty, tx, 0);
+        map_set_cell(ty, tx, map_cell(ty, tx) & 0xF7FF & 0xFBFF & 0xFDFF);
+        break;
+    }
+    default:
+        break;
+    }
+    if (++o->gv[0] == 4)
+        o->gv[0] = 0;
+    return 0;
+}

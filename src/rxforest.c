@@ -649,3 +649,176 @@ int do_cat_skeleton(obj_t *o)
         enemy_hit(o, 0);
     return 0;
 }
+
+/* The bolo cats (type 0x27, priority 0x37, OF_RATE at 0x4268), which GRABSTUFF's tile type 0x68
+ * drops in from the view's top: on level 6 they throw shuriken (CatShurID), elsewhere bolos
+ * (CatBoloID, the bolo type 0x28). The animators below are their states. A hit takes 2 points
+ * (4 while throwing after level 3). */
+static void bolo_cat_hit(obj_t *o, uint8_t max_hits)
+{
+    hit_player(o);
+    if (o->flags & OF_HIT) {
+        play_sample((uint8_t)(frandom(2) + 0x8D), NULL);
+        enemy_hit(o, max_hits);
+    }
+}
+
+static obj_t *spawn_bolo(int img, uint16_t x, uint16_t y, int16_t thrown, int16_t way, uint8_t xdir)
+{
+    obj_t *b = spawn_obj(0x28, LIST_MAIN, G.img[img], x, y);
+    b->gv[0] = thrown;
+    b->gv[1] = way;
+    b->xdir = xdir;
+    return b;
+}
+
+/* RXFRSTF.C:140 FBOLOCATFALL: falls to the ground (a pixel a run while CANMOVE says it can) and
+ * winds up (BOLOCATCOCK, or BOLOCATCOCK2 for shuriken). After a throw (GenericVar[0] 0) it first
+ * leaps out of the view's top and comes down at a new place on the other side
+ * (FINDBOLOPOS), or gives up if there's none. */
+int bolo_cat_fall(obj_t *o)
+{
+    if (o->gv[0] == 0) {
+        if (G.org_y < o->y) {
+            o->y--;
+        } else {
+            const uint8_t dir = o->xdir == 0;
+            o->x = find_bolo_pos(dir);
+            if (o->x == 0) {
+                obj_kill(o);
+                G.monster_number--;
+                return 0;
+            }
+            o->xdir = dir ? 1 : 0;
+            o->image = G.img[G.level == 6 ? IMG_CATSHUR + 3 : IMG_CATBOLO + 7];
+            play_sample(0x7F, o);
+            o->gv[0] = 1;
+        }
+    } else {
+        can_move(o);
+        if (o->down_offset == 1) {
+            o->y++;
+        } else if (G.level == 6) {
+            o->image = G.img[IMG_CATSHUR + 2];
+            o->animator = A_BOLOCATCOCK2;
+            o->frame_no = 0xFF;
+            o->frame_count = o->frame_count_max;
+        } else {
+            o->image = G.img[IMG_CATBOLO + 5];
+            o->animator = A_BOLOCATCOCK;
+        }
+    }
+    bolo_cat_hit(o, 2);
+    return 0;
+}
+
+/* RXFRSTF.C:207 FBOLOCATCOCK: swings the bolo up (CatBoloID frames); at frame 2 a bolo whirls
+ * in its hand (type 0x28, GenericVar[0] 0) and it throws (BOLOCATTHROW). */
+int bolo_cat_cock(obj_t *o)
+{
+    if (o->frame_no == 2) {
+        spawn_bolo(IMG_BOLO, o->xdir == 0 ? o->x : (uint16_t)(o->x - 0x16), o->y, 0, 0, 0);
+        o->counter = 0;
+        o->animator = A_BOLOCATTHROW;
+    } else {
+        next_frame(o, IMG_CATBOLO);
+    }
+    bolo_cat_hit(o, 2);
+    return 0;
+}
+
+/* RXFRSTF.C:241 FBOLOCATCOCK2 (level 6): throws a shuriken (ProjectiID, type 0x28) at frame 1, a
+ * second one rising above difficulty 2, and leaps off again (BOLOCATFALL). */
+int bolo_cat_cock2(obj_t *o)
+{
+    next_frame(o, IMG_CATSHUR);
+    if (o->frame_no == 1 && o->frame_count == o->frame_count_max) {
+        const uint16_t x = (uint16_t)(o->xdir == 0 ? o->x - 0x23 : o->x + 0x23);
+        if (G.diff_mode > 2)
+            spawn_bolo(IMG_PROJECTI, x, (uint16_t)(o->y + 0x0D), 1, 1, o->xdir);
+        spawn_bolo(IMG_PROJECTI, x, (uint16_t)(o->y + 0x0D), 1, 0, o->xdir);
+    } else if (o->frame_no == 2 && o->frame_count == 1) {
+        o->image = G.img[IMG_CATSHUR + 4];
+        o->gv[0] = 0;
+        o->animator = A_BOLOCATFALL;
+    }
+    bolo_cat_hit(o, 2);
+    return 0;
+}
+
+/* RXFRSTF.C:278 FBOLOCATTHROW: whirls the bolo for 0x1c2 ticks, then throws at frame 3: straight
+ * on difficulties 0, 1 and 4, and aimed at the player (rising, level, or falling towards one
+ * below) on 2-4. It then stands (CatBoloID[4], [5] after 800 ticks) and at 1000 leaps off. */
+int bolo_cat_throw(obj_t *o)
+{
+    obj_t *you = G.you;
+    if (o->counter < 0x1C2) {
+        bolo_cat_hit(o, G.level < 4 ? 2 : 4);
+        return 0;
+    }
+    if (o->frame_count == o->frame_count_max && o->frame_no == 3) {
+        const uint16_t x = (uint16_t)(o->xdir == 0 ? o->x - 0x1E - 10 : o->x + 0x1E);
+        play_sample(0x7F, o);
+        if (G.diff_mode != 2 && G.diff_mode != 3)
+            spawn_bolo(IMG_BOLO, x, (uint16_t)(o->y + 0x10), 1, 0, o->xdir);
+        if (G.diff_mode > 1) {
+            int16_t way = 1;
+            if ((uint16_t)(o->y - 10) <= you->y) {
+                if ((uint16_t)(o->y + 0x1E) < you->y)
+                    way = 2;
+                else if (G.diff_mode != 4)
+                    way = 0;
+            }
+            spawn_bolo(IMG_BOLO, x, (uint16_t)(o->y + 0x10), 1, way, o->xdir);
+        }
+    }
+    if (o->image == G.img[IMG_CATBOLO + 4] || o->image == G.img[IMG_CATBOLO + 5]) {
+        if (o->counter > 800)
+            o->image = G.img[IMG_CATBOLO + 5];
+        if (o->counter > 1000) {
+            o->image = G.img[IMG_CATBOLO + 7];
+            o->gv[0] = 0;
+            o->animator = A_BOLOCATFALL;
+        }
+    } else {
+        next_frame(o, IMG_CATBOLO);
+    }
+    bolo_cat_hit(o, 2);
+    return 0;
+}
+
+/* RXFRSTF.C:363 FDOBOLO: a bolo (BoloID before level 4, else ProjectiID: shuriken) that hurts.
+ * Whirling in a cat's hand (GenericVar[0] 0) it stays while any cat is about, up to 0x227 ticks;
+ * thrown, it flies a pixel a run (its own rate, 0x6978), rising or falling a pixel every second
+ * run by GenericVar[1] (1 up, 2 down), until a wall. */
+int do_bolo(obj_t *o)
+{
+    hit_player(o);
+    next_frame(o, G.level < 4 ? IMG_BOLO : IMG_PROJECTI);
+    if (o->gv[0] == 0) {
+        bool cats = false;
+        for (const obj_t *p = G.list[LIST_MAIN]; p; p = p->next)
+            cats = cats || (p->priority == 0x37 && !p->dead);
+        if (cats && o->counter < 0x227)
+            return 0;
+    } else {
+        if (++o->gv[2] > 1) {
+            o->gv[2] = 0;
+            if (o->gv[1] == 1)
+                o->y--;
+            else if (o->gv[1] == 2)
+                o->y++;
+        }
+        if (o->xdir == 0) {
+            if (can_go_left(o) && room_left(o)) {
+                o->x--;
+                return 0;
+            }
+        } else if (can_go_right(o) && room_right(o)) {
+            o->x++;
+            return 0;
+        }
+    }
+    obj_kill(o);
+    return 0;
+}

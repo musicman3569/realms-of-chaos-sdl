@@ -330,6 +330,7 @@ Some checks require bit 7 clear, some don't care (ported as decompiled):
 | 0x70      | back to the level's start (with a message window; `_quitflag` 6)            |
 | 0x75/0x6e | spikes (foreground tiles): a free hit (`_FreeHit`); 0x6e with blood         |
 | 0x68/0x69 | spawn a bolo-throwing cat / a frog (up to `_MaxMonsterNumber` at a time)    |
+| fg 0x19   | level 24: starts the snake platform (type 0x44), when on the ground          |
 
 Which warp file each castle level reads isn't explicit (READITEM takes an item number), but
 castle1 uses types 10-15 and castle2 10-12, matching the 6 and 3 pairs in `.008` / `.009`.
@@ -406,6 +407,33 @@ HpID[base + hit points] (base 0, 5, 12 or 21 for a maximum of 4, 6, 8 or 10) in 
 left corner; it blinks on the last hit point and while poisoned, and poison costs a hit point
 at each of the player's blinks. Four DOGEMNUMBER digits (GemNumID) and a spinning gem show
 the gem count.
+
+## Bolo cats and the snake platform
+
+**Bolo cats** (RXFRSTF.C; types 0x27 cat, 0x28 bolo). GRABSTUFF's bonus tile type 0x68 (levels 1, 2
+and 6), while `_MonsterNumber` < `_MaxMonsterNumber` and `_MonsterCounter` is 0, drops a cat at the
+view's top above ground found by FINDBOLOPOS(dir) (RXGRABF.C:206: columns 16 pixels apart from
+view x 0xf0 leftwards or 0x3c rightwards, stopping 0x37 pixels from the player; each ground cell
+(floor bit or slope) between view y 0x50 and 0xc0 taken 1 time in 3; the original drops a place
+found in the last column). Like the frog tile it stops after three (DS:38da). The cat (OF_RATE
+0x4268, hittable, counted in `_MonsterNumber` through SurfaceFlags 8) falls (BOLOCATFALL), winds
+up and throws: on level 6 BOLOCATCOCK2 throws shuriken (ProjectiID; a second rising one above
+difficulty 2); elsewhere BOLOCATCOCK whirls a bolo in its hand (type 0x28, GenericVar[0] 0: it stays
+while any cat lives, up to 0x227 ticks), then BOLOCATTHROW after 0x1c2 ticks throws at frame 3:
+straight on difficulties 0, 1 and 4, aimed (GenericVar[1]: 1 rising, 2 falling) on 2-4, stands and
+at 1000 ticks leaps back out of the view's top (BOLOCATFALL with GenericVar[0] 0) to come down
+elsewhere, on the other side, or goes. A thrown bolo (OF_RATE 0x6978) flies a pixel a run, a
+pixel up or down every second run, until a wall. A hit takes 2 points (4 while throwing after
+level 3).
+
+**The snake platform** (RXPLAT.C:1065 DOSNAKEPLAT, type 0x44, level 24 "goblins"). Foreground tile
+0x19 under a player on the ground starts it at one of two places (by the cell's row 93 or not):
+the head's cell is the object's x / y (cell coordinates, not pixels) and the tail's GenericVar[1]
+/ [2]. The body is foreground tile 4 and the track ahead tile 0x18; at every fourth run (OF_RATE
+0x7d0) the head moves onto the next track cell, which gets the floor and wall bits, and the tail
+moves along the body; the four runs animate the head (0x41, 0x40, 5, 4) and the tail (5, 0x40,
+0x41, then cleared, its cell's bits removed). At the track's end the head stays (GenericVar[3]);
+with no body left the object goes.
 
 ## The special item and the magic gems
 

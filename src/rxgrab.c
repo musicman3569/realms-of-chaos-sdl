@@ -32,7 +32,38 @@ static void take_gem(unsigned row, unsigned col, bool in_bonus, uint8_t sample, 
  *   0x73  a rare noise         0x6d  a spike to be impaled on
  *   0x65  water or a pit       0x67  the level's exit (_quitflag 3)
  *   0x70  back to the start    0x75 / 0x6e  spikes (0x6e with blood)
- *   0x68 / 0x69  spawn bolo-throwing cats (not ported yet) / frogs. */
+ *   0x68 / 0x69  spawn bolo-throwing cats / frogs
+ * and level 24's foreground tile 0x19 starts the snake platform. */
+
+/* RXGRABF.C:206 FINDBOLOPOS(dir): somewhere for a bolo cat to land, on the view's ground: from
+ * view x 0xf0 leftwards (dir 0) or 0x3c rightwards (1) a column of 16 pixels at a time, down to
+ * 0x37 pixels from the player, each ground cell (floor bit 0x800 or a slope) between view y 0x50
+ * and 0xc0 being taken 1 time in 3. Returns the map x (8 left of the column), or 0; as in the
+ * original, a place found in the last column before the player is dropped. */
+uint16_t find_bolo_pos(uint8_t dir)
+{
+    uint16_t found = 0, dx = dir == 0 ? 0xF0 : 0x3C;
+    while (found == 0 && dx != 0) {
+        for (uint16_t dy = 0x50; dy < 200; dy = (uint16_t)(dy + 0x10)) {
+            const unsigned row = (unsigned)(G.org_y + dy) >> 4, col = (unsigned)(G.org_x + dx) >> 4;
+            const uint16_t cell = map_cell(row, col);
+            if (((cell & 0x800) || G.lv->bg_type[cell & 0x1FF] > 199) && frandom(3) == 0)
+                found = (uint16_t)(G.org_x + dx - 8);
+        }
+        const uint16_t rel = (uint16_t)(G.you->x - G.org_x);
+        if (dir != 0) {
+            dx = (uint16_t)(dx + 0x10);
+            if ((uint16_t)(rel - 0x37) < dx)
+                dx = 0;
+        } else {
+            dx = (uint16_t)(dx - 0x10);
+            if (dx < (uint16_t)(rel + 0x37))
+                dx = 0;
+        }
+    }
+    return dx == 0 ? 0 : found;
+}
+
 void grab_stuff(unsigned row, unsigned col)
 {
     obj_t *you = G.you;
@@ -102,10 +133,34 @@ void grab_stuff(unsigned row, unsigned col)
         G.quitflag = 3;
         return;
     }
-    if (bon == 0x68 && G.monster_number < G.max_monster_number && G.monster_counter == 0)
-        return; /* a cat drops in throwing bolos (BOLOCATFALL): not ported yet */
-    if (fg == 0x19 && G.level == 0x18 && (you->gv[5] & 1))
-        return; /* goblin2's snake platform (DOSNAKEPLAT): not ported yet */
+    if (bon == 0x68 && G.monster_number < G.max_monster_number && G.monster_counter == 0) {
+        /* A cat (type 0x27) drops in from the view's top on the ground to one side and throws
+         * bolos (shuriken on level 6). The tile stops after three cats. */
+        if (++G.monster_spawns > 2) {
+            G.monster_spawns = 0;
+            map_set_cell(row, col, cell & 0xDFFF);
+        }
+        const uint16_t side = frandom(2);
+        const uint16_t x = find_bolo_pos((uint8_t)side);
+        if (x == 0)
+            return;
+        G.monster_number++;
+        G.monster_counter = 5;
+        play_sample(0x7F, NULL);
+        obj_t *c = spawn_obj(0x27, LIST_MAIN, G.img[G.level == 6 ? IMG_CATSHUR + 3 : IMG_CATBOLO + 6],
+                             x, G.org_y);
+        c->xdir = side == 0 ? 0 : 1;
+        return;
+    }
+    if (fg == 0x19 && G.level == 0x18 && (you->gv[5] & 1)) {
+        /* level 24: the snake platform (type 0x44) starts at one of its two cells */
+        map_set_cell(row, col, cell & 0xDFFF);
+        if (row == 0x5D)
+            spawn_obj(0x44, LIST_FORE, NULL, 0x1C, 0x5E);
+        else
+            spawn_obj(0x44, LIST_FORE, NULL, 0x1F, 0x26);
+        return;
+    }
     if (bon == 0x69 && G.monster_number < G.max_monster_number && G.monster_counter == 0) {
         /* A frog leaps out of the water 50-150 pixels to one side of the player, in front of
          * the water (the foreground list; GENERICBEGINFALL moves it to the main list), facing

@@ -301,6 +301,15 @@ player's position and animator, the inventory and the level's counters at the en
   disassembly since the decompile garbles the FRANDOM ranges. Verified headless on level 3: the
   male's whip (12 points) breaks it up into bones and sparks, and the bones are gone a second
   later, leaving its prize.
+- Port, GRABSTUFF's last spawners (notes "Bolo cats and the snake platform"): in `src/rxgrab.c`
+  FINDBOLOPOS and the tile type 0x68 spawner; in `src/rxforest.c` (RXFRSTF.C) FBOLOCATFALL,
+  COCK, COCK2, THROW and FDOBOLO (types 0x27 / 0x28); in `src/rxplat.c` DOSNAKEPLAT (type 0x44,
+  level 24 "goblins", not goblin2 as noted before). A map scan found the cat tiles on levels 1, 2
+  and 6 and the snake's two starts on level 24 (rows 37 and 93). Verified headless: on level 2 a
+  cat drops in beside the player, whirls a bolo, throws it rising at the player above and leaps
+  out of the view's top to come down elsewhere; on level 6 the cats throw shuriken; on level 24
+  the snake of bricks crawls along its track from the player's cell, its head running ahead and
+  its tail following.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -311,8 +320,7 @@ player's position and animator, the inventory and the level's counters at the en
 1. **Unported leftovers** (next): every behaviour a level reaches is ported now (a `--sweep`
    run lists any animator that isn't; it needs `--screenshot`, or it opens a window).
    `tools/animators.py` maps object types to animators. Left over from the damage
-   milestone: GRABSTUFF's other spawners (bolo cats
-   0x68 via FINDBOLOPOS, goblin2's snake platform), the
+   milestone: the
    rafts' parent lists (PARENTLISTADD), PROCESSLEVEL's looking up / down, XLEVEL
    (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:
    `http://127.0.0.1:8080/decompile?name=DOTRANSFORMER`.
