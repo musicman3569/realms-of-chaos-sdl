@@ -805,6 +805,16 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     if (G.level == 10 && G.boss)
         for (int i = 0; i < 4; i++)
             spawn_obj(0x4B, LIST_MAIN, G.img[IMG_DRAGNECK], G.boss->x, (uint16_t)(G.boss->y - 4));
+    if (G.level == 0x14) {
+        /* the skeleton boss and its head, under the floor */
+        G.enemy_in_level++;
+        G.boss = spawn_obj(0x53, LIST_MAIN, NULL, 0xEF, 0x11E);
+        obj_t *head = spawn_obj(0x53, LIST_MAIN, NULL, 0xEF, 0x11E);
+        G.neck[0] = head;
+        head->animator = A_DOSKELHEAD;
+        head->gv[0] = 1;
+        head->flags |= OF_HITTABLE;
+    }
     game_view_on_player();
     return true;
 }

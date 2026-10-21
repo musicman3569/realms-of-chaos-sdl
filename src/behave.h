@@ -97,6 +97,16 @@ int do_drop(obj_t *o);
 int do_boar(obj_t *o);
 int do_boar_attack(obj_t *o);
 int do_boar_spear(obj_t *o);
+int do_skel_head(obj_t *o);
+int skel_wait(obj_t *o);
+int skel_rise(obj_t *o);
+void skel_fall(obj_t *o);
+int skel_sink(obj_t *o);
+int skel_walk(obj_t *o);
+int skel_hack(obj_t *o);
+int skel_lunge(obj_t *o);
+int skel_wait2(obj_t *o);
+int skel_die(obj_t *o);
 
 /* rxgoblin.c */
 int goblin_stand(obj_t *o);

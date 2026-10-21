@@ -131,8 +131,17 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x47:
         boss_head_bounce(o);
         return;
-    case 0x97: case 0x4A:
-        return; /* ROLLINGBOULDER, the skeleton boss: not ported yet */
+    case 0x4A:
+        /* the skeleton boss (rising it throws up rocks), or its head */
+        if (o != G.boss)
+            do_skel_head(o);
+        else if (falling)
+            skel_fall(o);
+        else
+            skel_rise(o);
+        return;
+    case 0x97:
+        return; /* ROLLINGBOULDER: not ported yet */
     case 0x4E:
         if (!falling)
             break;
@@ -163,7 +172,8 @@ int generic_begin_fall(obj_t *o)
 {
     o->animator = A_GENERICFALL;
     o->gv[5] &= ~(4 | 8 | 1);
-    /* (The skeleton boss, priority 0x4a, also changes its image here: not ported yet.) */
+    if (o->priority == 0x4A && o == G.boss)
+        obj_image(o, G.img[IMG_SKELHACK + 2]); /* the skeleton boss */
     if (o->priority == 0x35 && o->list == LIST_FORE) {
         /* A frog leaping out of the water is drawn in front of it; coming down, it moves to
          * the main list as a copy (type 0x3e), and the original goes. */
@@ -566,8 +576,16 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
         o->gv[1] = 0;
         return;
     }
-    if ((pr == 0x4A && o == G.boss) || pr == 0x4C)
-        return; /* the other bosses' deaths: not ported yet */
+    if (pr == 0x4A && o == G.boss) {
+        /* the skeleton boss */
+        G.boss->animator = A_SKELDIE;
+        G.boss->counter = 0;
+        G.boss->gv[1] = 0;
+        G.boss->gv[2] = 0;
+        return;
+    }
+    if (pr == 0x4C)
+        return; /* the demon's death: not ported yet */
     if (pr == 2) {
         o->old_animator = o->animator;
         o->animator = A_ENEMYHITPAUSE;

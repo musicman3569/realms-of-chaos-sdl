@@ -726,6 +726,21 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[2] = 0;
         o->gv[0] = 0;
         break;
+    case 0x53: /* the skeleton boss and its head (INITLEVEL, level 20) */
+        o->xdir = 1;
+        o->update = 0x1000;
+        o->animator = A_SKELWAIT;
+        o->priority = 0x4A;
+        o->gv[3] = 0;
+        o->gv[0] = 0;
+        o->gv[1] = 0;
+        break;
+    case 0x54: /* a rock the skeleton boss throws up */
+        o->surface_flags &= 0xFE;
+        o->animator = A_GENERICBEGINJUMP;
+        o->priority = 0x4B;
+        o->gv[5] = 0x0F;
+        break;
     case 0x5B: /* the raft's front piece */
         o->animator = A_NULLANIMATOR;
         o->priority = 0x18;

@@ -622,6 +622,36 @@ machine code gives columns +3 and +23. ENEMYHIT (priority 0x47) gives BOSSHEADDI
 ticks a flicker, rocks and an explosion; after 0xb4 the level is won, and falling platforms
 (SPINPLATDIE) shatter.
 
+**The skeleton boss** (deadb, level 20, RXSKELF.C; the SKEL* animators in RXDEAD.C call FSKEL*).
+INITLEVEL spawns two type 0x53 objects (SKELWAIT, priority 0x4a, xDir 1) at (0xef, 0x11e), under
+the floor: the skeleton (`_Boss`) and its head (`_Neck[0]`, Animator DOSKELHEAD, GenericVar[0] 1,
+hittable). The skeleton itself isn't hittable: only its head hurts it. SKELWAIT lets the camera
+go vertically (`_CenterOff` -1, a 200-high dead zone) and waits for `_OrgX` = `Cols * 16 - 0x141`
+(0xcf), then shows the bar and makes the dead zone the whole view. SKELRISE leaps out
+(GENERICBEGINJUMP: ySpeed -30000 for 0x136 ticks, SkelHackID[1]; GENERICBEGINFALL gives it
+SkelHackID[2]) and throws up a rock (type 0x54, priority 0x4b, DeadRck4ID) every 10 ticks while
+rising; GENERICDOWN lands it in SKELWALK facing right or SKELLUNGE facing left. SKELWALK steps 9
+pixels a frame until within 0x5a of the player, then SKELHACK swings four frames 8 pixels apart;
+SKELLUNGE glides left at 18000 with the sword out until x 0x122. Both set `_FreeHit` for a player
+in front of the blade from the third frame. SKELSINK sinks 2 pixels and a rock every 12 ticks to y
+0x104, then it hides at y 0x11e on the other side (x 0xef or 0x1d3, xDir flipped) for 300 ticks
+(SKELWAIT2) and rises again. All of them keep the player right of `_OrgX + 5`.
+
+The head shows SkelHeadID[0..4] by its distance from the player and, on the neck, is placed by a
+chain of comparisons with the skeleton's image (for the hack's images, facing right, the original
+subtracts its 5 pixels twice). A weapon hit knocks it off (GenericVar[0] 0) away from the player
+(GENERICBEGINJUMP, ±32000, -16000) and arms it (GenericVar[1], blinking, 500 ticks); it then
+bounces for good (each landing reverses ySpeed, nudged towards -27000, and xSpeed decays to 16000)
+off the view's sides (`_OrgX` .. `_OrgX + 300`), and hurts above difficulty 1. An armed head
+overlapping the skeleton (OBJCOLLIDE) is a hit: the skeleton's Flags 2 and GenericVar[3] + 1, a
+blink, sparks; its next animator call is SKELHIT (4 bones, type 0x38 with DOPROJECTILE kind 7,
+and ENEMYHIT with the hits at DS:00c9). The check runs in the same call as the knock-off, so a
+head struck while on the neck can hit the body at once. ENEMYHIT (priority 0x4a, `_Boss`) gives
+SKELDIE: the skeleton floats up to `_OrgY + 0x14`; every 45 ticks (GenericVar[1]) a round of
+sounds, two explosions and four bones (first 60 rounds), hidden for 25 ticks with the view down a
+pixel (first 45); after 71 rounds `_quitflag` 3. The head sees SKELDIE and dies too (ENEMYHIT with
+GenericVar[3] 3, `_EnemyFound` taken back).
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a
