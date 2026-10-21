@@ -296,6 +296,11 @@ player's position and animator, the inventory and the level's counters at the en
   inverts the palette and keeps the player unhurt for 0xddd ticks; the death gem flashes white
   and kills what's in view; the weapon gem raises both weapons a step and holds the glowing
   player while sparks fly in. A sweep of all 29 levels reaches no unported animator.
+- Port, the cat skeleton's death (ENEMYHIT, priority 0x4e): it falls apart into its eleven
+  bones (type 0x38 debris, BonesID[0..10], thrown from its upper half), read from the raw
+  disassembly since the decompile garbles the FRANDOM ranges. Verified headless on level 3: the
+  male's whip (12 points) breaks it up into bones and sparks, and the bones are gone a second
+  later, leaving its prize.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -307,7 +312,7 @@ player's position and animator, the inventory and the level's counters at the en
    run lists any animator that isn't; it needs `--screenshot`, or it opens a window).
    `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: GRABSTUFF's other spawners (bolo cats
-   0x68 via FINDBOLOPOS, goblin2's snake platform), the cat skeleton's bones in ENEMYHIT, the
+   0x68 via FINDBOLOPOS, goblin2's snake platform), the
    rafts' parent lists (PARENTLISTADD), PROCESSLEVEL's looking up / down, XLEVEL
    (the cheat fly mode). The decompiles are easiest to read from GhidraMCP's HTTP backend:
    `http://127.0.0.1:8080/decompile?name=DOTRANSFORMER`.

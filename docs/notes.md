@@ -522,7 +522,9 @@ checks `HitPoints[0]`, the female's hit points, whichever character is playing.
   `FRANDOM` ranges in ROCKMONSTERHIT are lost in the decompile and had to be read from the
   machine code.
 - **Drips** (DODROP): an invisible tap drops water (1 in 4000 a tick); the cat skeleton
-  (DOCATSKELETON) walks and falls off ledges like the other walkers.
+  (DOCATSKELETON) walks and falls off ledges like the other walkers, takes 12 points, and dies
+  (ENEMYHIT, priority 0x4e) into its eleven bones: type 0x38 debris with BonesID[i], at x +
+  FRANDOM(width), y + FRANDOM(height / 2), facing FRANDOM(2).
 
 **The castle, the wisp and the chains.**
 

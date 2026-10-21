@@ -630,7 +630,13 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
             p->gv[2] = 2;
             p->animator = A_SPLASHSPAWNER;
         } else if (pr == 0x4E) {
-            b->gv[1] = 1; /* (and the cat skeleton's eleven bones: not ported yet) */
+            /* the cat skeleton falls apart into its eleven bones (thrown like debris) */
+            b->gv[1] = 1;
+            for (int i = 0; i < 11; i++) {
+                const uint16_t x = (uint16_t)(o->x + frandom(o->xsize));
+                const uint16_t y = (uint16_t)(o->y + frandom(o->ysize >> 1));
+                spawn_obj(0x38, LIST_MAIN, G.img[IMG_BONES + i], x, y)->xdir = (uint8_t)frandom(2);
+            }
         } else if (!(G.game_flags & 4) || pr == 0x34 || pr == 0x96 || pr == 0x4A ||
                    !G.blood_on) {
             b->gv[1] = 1; /* sparks */
