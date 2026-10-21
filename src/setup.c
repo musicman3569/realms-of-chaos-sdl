@@ -154,7 +154,7 @@ void setup_obj(obj_t *o, uint8_t type)
         o->counter = 0;
         if (lv == 0x0F) {
             o->xdir = 0;
-            o->animator = 0x74C8; /* CRUSHERCENTER */
+            o->animator = A_CRUSHERCENTER;
             o->gv[0] = 1;
             G.window_xsize = 0x140;
             o->flags &= 0xBF;

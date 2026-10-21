@@ -71,6 +71,7 @@ static const animator_t table[] = {
     {A_GOBLINFIST, goblin_fist},
     {A_DOSPOREHOLE, do_spore_hole},
     {A_DOSPORE, do_spore},
+    {A_CRUSHERCENTER, crusher_center},
     {A_DOCHAIN, do_chain},
     {A_DOCHAINEND, do_chain_end},
     {A_FROGPLAT, frog_plat},

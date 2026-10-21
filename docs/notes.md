@@ -581,6 +581,19 @@ Animator (`_Img.ChainID`, `_Img.DemSideID + 8`) and turn to DRAGONNECKDIE, the f
 bobbing faster and bleeding while the others follow it. 2000 ticks after the head lands the
 level is won (again checking `HitPoints[0]`).
 
+**The crusher** (mushromb, level 15, RXMUSH.C). Not a creature: the shaft is 30 tiles (480
+pixels) wide and the room slides across it. The camera object (type 8, CRUSHERCENTER) moves
+between x 0 and 0x80 at a rate that grows by 5 a tick to 0x1000 (starting with a pause:
+GenericVar[0] 1), stops 0x20 runs at each end with a thud and the view shaking, and the view
+scrolls a pixel a tick after it. MAINTAINSTUFF pins the walls (type 0x40, priority 10; at the
+view's left edge, or 0x130 / 0x138 right of it by GenericVar[0]), the platforms (priority
+0x14, at 0x108, solid through MAINTAINPLATFORM / MAINTAINBLOCK) and the chains (0x15 / 0x16, at
+0x120; DOCHAIN still runs for them) to the view. While the room moves, MOVESTUFF carries
+everything in the air (GenericVar[5] bit 0 clear) along. Every run, any main-list object
+overlapping a wall (left of view x 0x12, or right of 0x130) is pushed a pixel back in; the
+player is crushed (FYOUCRUSH) when rock (CANGOLEFT / CANGORIGHT) or the other wall leaves no
+room, unless climbing.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

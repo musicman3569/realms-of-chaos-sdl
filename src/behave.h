@@ -125,6 +125,7 @@ int do_spore_hole(obj_t *o);
 int do_spore(obj_t *o);
 int do_chain(obj_t *o);
 int do_chain_end(obj_t *o);
+int crusher_center(obj_t *o);
 
 /* rxcastle.c */
 int do_knife_guard(obj_t *o);

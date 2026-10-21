@@ -224,6 +224,11 @@ player's position and animator, the inventory and the level's counters at the en
   necks ripple behind the head; struck down (a hit forced for the test: the scripted player is
   always knocked back before reaching the head) the head flies off and bounces, the stump
   thrashes and bleeds, and 2000 ticks later level 11 starts.
+- Port, the crusher (mushromb, level 15; notes "The crusher"): in `src/rxmush.c` CRUSHERCENTER,
+  MOVESTUFF and MAINTAINSTUFF. Verified headless: the room swings between view x 0 and 0x80
+  (about 2 s each way, a pause and a thud at each end, the view shaking), the walls, platforms
+  and chains stay pinned to the view, the walls shove the player along, and a player shoved
+  into rock is crushed (FYOUCRUSH) and the level restarts.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -233,8 +238,8 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **The other bosses** (next), one at a time with their cameras; a `--sweep` run lists the
    animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
-   window), and `--boss-hits` shortens a fight. Left: the crusher's camera, CRUSHERCENTER (15;
-   RXMUSH.C), the goblin boss's head, BOSSCENTER (16; RXGOBLIN.C / RXBOSSF.C), level 20's
+   window), and `--boss-hits` shortens a fight. Left: the goblin boss's head, BOSSCENTER (16;
+   RXGOBLIN.C / RXBOSSF.C), level 20's
    skeleton boss (type 0x53, which INITLEVEL spawns: not yet), and the demon, DEMONWAIT /
    DEMONCENTER (25; RXDEMONF.C); BOSSHITPOINTS and ROSSSHAKE are already there for them.
    **INITLEVEL** (RXOBJF.C:391, ported in `game_start`) still lacks these spawns, which is

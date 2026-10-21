@@ -1,4 +1,5 @@
-/* RXMUSH.C: the mushroom levels' spore holes, and the chains to climb. */
+/* RXMUSH.C: the mushroom levels' spore holes, the chains to climb, and the crusher's sliding
+ * room (level 15). */
 #include "behave.h"
 
 /* RXMUSH.C:11 DOSPOREHOLE: an invisible vent (type 0x47, OF_RATE) on a 14-run cycle: it
@@ -138,5 +139,176 @@ int do_chain_end(obj_t *o)
 {
     if (G.boss)
         o->x = (uint16_t)(G.boss->x + 0x10);
+    return 0;
+}
+
+/* The crusher (mushromb, level 15): a shaft 30 tiles wide whose room slides from side to side.
+ * The camera object (type 8, CRUSHERCENTER) swings between x 0 and 0x80 and the view follows
+ * it; the walls (type 0x40, priority 10), the platforms (0x14) and the chains (0x15, 0x16) are
+ * pinned to the view (MAINTAINSTUFF), and anything a wall pushes into the shaft's rock is
+ * crushed. */
+
+/* The player may be pushed right / left by a wall: not into rock, nor (on level 15) past the
+ * room's other wall. */
+static bool may_push_right(void)
+{
+    const obj_t *you = G.you;
+    if (!can_go_right(you))
+        return false;
+    return G.level == 0x0F ? (uint16_t)(you->x + 0x0E) < (uint16_t)(G.org_x + 0x130)
+                           : (uint16_t)(you->x + 0x0E) < (uint16_t)(G.lv->cols * 16 - 1);
+}
+
+static bool may_push_left(void)
+{
+    const obj_t *you = G.you;
+    if (!can_go_left(you))
+        return false;
+    return G.level == 0x0F ? (uint16_t)(G.org_x + 0x12) < you->x : you->x >= 0x19;
+}
+
+/* RXMUSH.C:191 MOVESTUFF: as the room slides a pixel, whatever is in the air (GenericVar[5]
+ * bit 0 clear) slides with it, unless it would leave the room (or, the player, while
+ * climbing or dead). */
+static void move_stuff(const obj_t *cam, obj_t *p)
+{
+    if (p->gv[5] & 1)
+        return;
+    obj_t *you = G.you;
+    if (cam->xdir != 0 && can_go_right(p) && (uint16_t)(p->x + p->xsize) < (uint16_t)(G.org_x + 0x130)) {
+        if (p != you)
+            p->x++;
+        else if (may_push_right() && !(G.game_flags & 1) && you->animator != A_NULLANIMATOR)
+            player_right(1, you);
+    } else if (cam->xdir == 0 && can_go_left(p) && (uint16_t)(G.org_x + 0x12) < p->x) {
+        if (p != you)
+            p->x--;
+        else if (may_push_left() && !(G.game_flags & 1) && you->animator != A_NULLANIMATOR)
+            player_left(1, you);
+    }
+}
+
+/* RXMUSH.C:226 MAINTAINSTUFF: the walls stand at the view's left edge (GenericVar[0] 0) or
+ * 0x130 / 0x138 right of it, the platforms at 0x108 (solid, carrying the player), the chains
+ * at 0x120. */
+static void maintain_stuff(obj_t *o)
+{
+    if (o->priority == 10) {
+        o->x = o->gv[0] == 0   ? G.org_x
+               : o->gv[0] == 1 ? (uint16_t)(G.org_x + 0x130)
+                               : (uint16_t)(G.org_x + 0x138);
+    } else if (o->priority == 0x14) {
+        o->x = (uint16_t)(G.org_x + 0x108);
+        o->gv[5] |= 4 | 8;
+        maintain_platform(o);
+        if (obj_overlap(G.you, o) && !(o->gv[5] & 0x20))
+            maintain_block(o);
+        o->gv[5] &= 0x60;
+    } else {
+        o->x = (uint16_t)(G.org_x + 0x120);
+        if (o->priority == 0x15)
+            do_chain(o);
+    }
+}
+
+static bool pinned(const obj_t *o)
+{
+    return o->priority == 10 || o->priority == 0x14 || o->priority == 0x15 || o->priority == 0x16;
+}
+
+/* RXMUSH.C:71 CRUSHERCENTER: the camera. Its rate grows by 5 a tick to 0x1000; at each carry
+ * it moves a pixel towards its end (GenericVar[0] 0) and carries what's in the air along, or
+ * waits (GenericVar[0] counting to 0x20) and turns, with a thud and the rumble (sample 0x95,
+ * its handle in GenericVar[4]). At either end the view shakes. The view follows it sideways
+ * a pixel a tick, and the player up and down every 4 ticks like SCREENCENTER. Then every
+ * object in the main list is kept in the room: pushed a pixel off a wall it overlaps, and the
+ * player crushed (FYOUCRUSH) if the rock (or the other wall) leaves no room. */
+int crusher_center(obj_t *o)
+{
+    obj_t *you = G.you;
+    o->xspeed = (int16_t)(o->xspeed + 5);
+    if (o->xspeed > 0x1000)
+        o->xspeed = 0x1000;
+    if (carry(&o->xpart, o->xspeed)) {
+        if (o->gv[0] == 0) {
+            if (o->xdir == 0)
+                o->x--;
+            else
+                o->x++;
+            if (o->x == (o->xdir == 0 ? 0 : 0x80)) {
+                sound_link_kill(o->gv[4]);
+                play_sample(0xA3, o);
+                obj_t *s = spawn_obj(0x18, LIST_FORE, NULL, G.org_x, G.org_y);
+                s->animator = A_ROSSSHAKE;
+                s->gv[0] = 0;
+                s->counter = 0;
+                o->gv[0]++;
+            }
+            obj_t *next;
+            for (obj_t *p = G.list[LIST_MAIN]; p; p = next) {
+                next = p->next;
+                if (p->image && !pinned(p))
+                    move_stuff(o, p);
+            }
+        } else if (++o->gv[0] == 0x20) {
+            o->xdir = !o->xdir;
+            o->gv[0] = 0;
+            o->xspeed = 0;
+            play_sample(0x97, o);
+            if (o->gv[4] != 0 && !sound_link_active(o->gv[4]))
+                o->gv[4] = 0;
+            if (o->gv[4] == 0)
+                o->gv[4] = (int16_t)play_sample(0x95, o);
+        }
+    }
+    if (carry(&o->ypart, 0x4000) && G.center_off > 0) {
+        if (you->y < (uint16_t)(G.org_y + 0x4B) && G.org_y != 0) {
+            scroll_up(1);
+        } else if ((uint16_t)(G.org_y + G.center_off) < you->y &&
+                   G.org_y < (uint16_t)(G.lv->rows * 16 - 200)) {
+            scroll_down(1);
+        } else if (G.window_ysize != 50) {
+            set_scroll_bounds(0x32, G.window_xsize);
+            G.window_ysize = 50;
+        }
+    }
+    if (o->x < G.org_x)
+        scroll_left(1);
+    else if (G.org_x < o->x)
+        scroll_right(1);
+    obj_t *next;
+    for (obj_t *p = G.list[LIST_MAIN]; p; p = next) {
+        next = p->next;
+        if (pinned(p)) {
+            maintain_stuff(p);
+            continue;
+        }
+        if (p->priority == 0x28)
+            continue;
+        if (p->x < (uint16_t)(G.org_x + 0x12)) {
+            if (p != you)
+                p->x++;
+            else if (may_push_right()) {
+                if (!(G.game_flags & 1))
+                    player_right(1, you);
+            } else {
+                you_crush(you);
+            }
+        } else if ((uint16_t)(G.org_x + 0x130) < (uint16_t)(p->x + p->xsize)) {
+            if (p != you)
+                p->x--;
+            else if (may_push_left()) {
+                if (!(G.game_flags & 1))
+                    player_left(1, you);
+            } else {
+                you_crush(you);
+            }
+        }
+    }
+    for (obj_t *p = G.list[LIST_FORE]; p; p = next) {
+        next = p->next;
+        if (p->priority == 10)
+            maintain_stuff(p);
+    }
     return 0;
 }
