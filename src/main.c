@@ -2,7 +2,7 @@
  *
  * Usage: roc game/ROC.EXE [--level N] [--pos X,Y] [--player X,Y] [--no-objects] [--ticks N]
  *            [--trace N] [--female] [--gems N] [--boss-hits N] [--invincible] [--difficulty N]
- *            [--collect K]
+ *            [--collect K] [--score N]
  *            [--hold ACTION:FROM-TO,...] [--sweep] [--list] [--screenshot out.png]
  *
  * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself), then runs a level in
@@ -19,7 +19,8 @@
  * starts with N gems; --boss-hits N starts the level's boss with N hits taken (GenericVar[3]);
  * --invincible sets _YouInvincible (nothing hurts the player); --difficulty N sets _DiffMode
  * (0-4, default 2); --collect K hands the player prize K (CollectID[K], as DOFLYINGSHIT counts
- * it: 0x21 shields, 0x23 lightning, 0x25 death, 0x29 a stronger weapon) at the start;
+ * it: 0x21 shields, 0x23 lightning, 0x25 death, 0x29 a stronger weapon) at the start; --score N
+ * starts with N points;
  * --sweep moves the player from its start to the map's right edge during
  * the run (to wake every object); --list prints every object. */
 #include "archive.h"
@@ -27,6 +28,7 @@
 #include "gfx.h"
 #include "level.h"
 #include "png.h"
+#include "ui.h"
 
 #include <SDL.h>
 
@@ -55,6 +57,7 @@ typedef struct {
     int boss_hits;
     int difficulty;
     int collect;                 /* --collect: a prize (CollectID index) to collect, or -1 */
+    long score;
     hold_t holds[MAX_HOLDS];
     int hold_count;
     const char *screenshot;
@@ -123,6 +126,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->invincible = true;
         else if (!strcmp(a, "--difficulty") && i + 1 < argc)
             o->difficulty = atoi(argv[++i]);
+        else if (!strcmp(a, "--score") && i + 1 < argc)
+            o->score = atol(argv[++i]);
         else if (!strcmp(a, "--collect") && i + 1 < argc)
             o->collect = (int)strtol(argv[++i], NULL, 0);
         else if (!strcmp(a, "--gems") && i + 1 < argc)
@@ -151,13 +156,17 @@ static void sibling(char *out, size_t n, const char *path, const char *name)
     snprintf(out, n, "%.*s%s", dir, path, name);
 }
 
-static void to_argb(const surface_t *s, const uint8_t *pal6, uint32_t *out)
+/* The palette as the VGA gets it: SETPALETTE adds _GammaCorrect and caps each component at 63. */
+static void to_argb(const surface_t *s, const uint8_t *pal6, int gamma, uint32_t *out)
 {
     uint32_t lut[256];
     for (int i = 0; i < 256; i++) {
-        const uint32_t r = pal6[i * 3] * 255u / 63, g = pal6[i * 3 + 1] * 255u / 63,
-                       b = pal6[i * 3 + 2] * 255u / 63;
-        lut[i] = 0xFF000000u | r << 16 | g << 8 | b;
+        uint32_t c[3];
+        for (int k = 0; k < 3; k++) {
+            const int v = pal6[i * 3 + k] + gamma;
+            c[k] = (uint32_t)(v > 63 ? 63 : v) * 255u / 63;
+        }
+        lut[i] = 0xFF000000u | c[0] << 16 | c[1] << 8 | c[2];
     }
     for (int i = 0; i < s->w * s->h; i++)
         out[i] = lut[s->px[i]];
@@ -168,7 +177,7 @@ static int save_png(const char *path, const surface_t *s, const uint8_t *pal6)
     uint32_t *px = malloc((size_t)s->w * s->h * sizeof *px);
     if (!px)
         return -1;
-    to_argb(s, pal6, px);
+    to_argb(s, pal6, G.gamma, px);
     const int rc = png_write_argb(path, px, s->w, s->h);
     free(px);
     return rc;
@@ -203,8 +212,17 @@ static int pc_scancode(SDL_Scancode s)
     case SDL_SCANCODE_RIGHT: case SDL_SCANCODE_KP_6: return 0x4D;
     case SDL_SCANCODE_DOWN: case SDL_SCANCODE_KP_2: return 0x50;
     case SDL_SCANCODE_PAGEDOWN: case SDL_SCANCODE_KP_3: return 0x51;
+    case SDL_SCANCODE_MINUS: return 0x0C;
+    case SDL_SCANCODE_EQUALS: return 0x0D;
+    case SDL_SCANCODE_HOME: case SDL_SCANCODE_KP_7: return 0x47;
+    case SDL_SCANCODE_END: case SDL_SCANCODE_KP_1: return 0x4F;
+    case SDL_SCANCODE_KP_MINUS: return 0x4A;
+    case SDL_SCANCODE_KP_PLUS: return 0x4E;
+    case SDL_SCANCODE_0: return 0x0B;
     default: break;
     }
+    if (s >= SDL_SCANCODE_1 && s <= SDL_SCANCODE_9)
+        return 0x02 + (s - SDL_SCANCODE_1);
     if (s >= SDL_SCANCODE_F1 && s <= SDL_SCANCODE_F10)
         return 0x3B + (s - SDL_SCANCODE_F1);
     if (s == SDL_SCANCODE_F11)
@@ -288,19 +306,128 @@ static void process_look(void)
     }
 }
 
-/* PROCESSLEVEL's _quitflag cases: 3 the exit (on to the next level, with at least 4 / 6 hit
- * points and the poison cured), 4 dead (100 frames later the level starts again with the
- * inventory it started with), 6 warped (the view follows). Before them, once a frame, the
- * look keys and the fly-mode cheat (D + CapsLock + X: XLEVEL). The story screens, the menu, the
- * other cheats and saving aren't ported. Returns true if it started a level. */
-static bool process_level(level_t *lv, const archive_t *arc, const level_list_t *list,
-                          int *dead_frames, char *err, size_t errlen)
+/* F11 (in the windows too, WINDOWCURSOR2): the gamma up a step of 4, from 16 back to 0. */
+static void gamma_key(void)
 {
+    if (!G.keys[0x57] || !G.gamma_armed) {
+        if (!G.keys[0x57])
+            G.gamma_armed = 1;
+        return;
+    }
+    G.gamma_armed = 0;
+    G.gamma = (uint8_t)(G.gamma + 4);
+    if (G.gamma > 0x10)
+        G.gamma = 0;
+}
+
+/* _CheatCodes (DS:02b2): PC scancodes, NUL-ended, for PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND
+ * (CHEATER 0-5) and ETHER (WARPMENU). */
+static const uint8_t cheat_codes[7][7] = {
+    {0x19, 0x13, 0x17, 0x32, 0x12}, {0x32, 0x1E, 0x22, 0x32, 0x1E},
+    {0x1E, 0x1F, 0x14, 0x13, 0x1E, 0x26}, {0x21, 0x17, 0x13, 0x12},
+    {0x13, 0x1E, 0x17, 0x31}, {0x11, 0x17, 0x31, 0x20}, {0x12, 0x14, 0x23, 0x12, 0x13},
+};
+
+/* The start of PROCESSLEVEL: the level's clock, the windows the keys ask for (opened by the
+ * next frame: _MenuComing), F11's gamma, F5's status display, the cheat codes (held Backspace,
+ * then the word) and the extra hit points every 10000 points. */
+static void process_keys(void)
+{
+    /* the clock: a second every 0x247 ticks, every fifth 0x244 */
+    while (G.level_tics > G.next_second) {
+        G.next_second += ++G.timer_fix == 5 ? 0x244 : 0x247;
+        if (G.timer_fix == 5)
+            G.timer_fix = 0;
+        if (++G.second_in_level > 0x3B) {
+            G.second_in_level = 0;
+            if (G.minute_in_level < 100)
+                G.minute_in_level++;
+        }
+    }
+    if (G.menu_coming == MENU_STATUS_ON && G.status_on && !G.hit_pts) {
+        G.hit_pts = spawn_obj(0x0F, LIST_SLOW, NULL, 0, 0);
+        for (int i = 0; i < 5; i++)
+            spawn_obj(0x09, LIST_SLOW, NULL, 0, 0x10)->gv[0] = (int16_t)i;
+    }
+    G.menu_coming = MENU_NONE;
+    if (G.keys[0x3B])
+        G.menu_coming = MENU_HELP; /* F1 (the original saves, reads, and restores) */
+    if (G.keys[0x44])
+        G.menu_coming = MENU_QUIT; /* F10 */
+    if (G.keys[0x40] || G.keys[0x0F] || G.pause_hit)
+        G.menu_coming = MENU_STATUS; /* F6, Tab, Pause */
+    /* (Esc's main menu, F2 / F3 save and load, F4 sound, F8 / F9 quick save and load: not
+     * ported) */
+    gamma_key();
+    if (++G.status_count > 5) {
+        G.status_count = 6;
+        if (G.keys[0x3F] && G.status_armed) {
+            G.status_count = 0;
+            G.status_armed = 0;
+            G.status_on = !G.status_on;
+            if (G.status_on)
+                G.menu_coming = MENU_STATUS_ON;
+        }
+        if (!G.keys[0x3F] && !G.status_armed) {
+            G.status_count = 0;
+            G.status_armed = 1;
+        }
+    }
+    if (!G.keys[0x0E]) {
+        if (G.cheat_attempt == 100) {
+            for (int c = 0; c < 7; c++)
+                if (G.keys[cheat_codes[c][0]]) {
+                    G.cheat_count = 1;
+                    G.cheat_attempt = (uint8_t)c;
+                }
+        } else if (G.cheat_attempt < 7 &&
+                   G.keys[cheat_codes[G.cheat_attempt][G.cheat_count]] &&
+                   cheat_codes[G.cheat_attempt][++G.cheat_count] == 0) {
+            G.menu_coming = G.cheat_attempt < 6 ? MENU_CHEAT + G.cheat_attempt : MENU_WARP;
+            G.cheat_attempt = 200;
+        }
+    } else {
+        G.cheat_count = 0;
+        G.cheat_attempt = 100;
+    }
+    if (Inv.score >= G.next_score_up) {
+        play_sample(0xB3, G.you);
+        G.next_score_up += 10000;
+        for (int i = 0; i < 2; i++) {
+            Inv.max_hit_points[i] = (uint8_t)(Inv.max_hit_points[i] + 2);
+            if (Inv.max_hit_points[i] > 10)
+                Inv.max_hit_points[i] = 10;
+        }
+        if (G.message_on)
+            G.game_flags |= Inv.max_hit_points[0] < 10 ? 0x800 : 0x8000;
+        Inv.hit_points[0] = Inv.max_hit_points[0];
+        Inv.hit_points[1] = Inv.max_hit_points[1];
+    }
+}
+
+/* PROCESSLEVEL's _quitflag cases: 0 playing (a hint may come, SPAWNHINTS), 1 quit (F10), 3 the
+ * exit and 7 a warp (on to the next level, or the one typed, with at least 4 / 6 hit points and
+ * the poison cured), 4 dead (100 frames later the level starts again with the inventory it
+ * started with), 6 warped within the level (the view follows). Before them, once a frame,
+ * process_keys, the look keys and the fly-mode cheat (D + CapsLock + X: XLEVEL). The story
+ * screens, the menus and saving aren't ported. Returns true if it started a level; sets *quit
+ * for _quitflag 1. */
+static bool process_level(level_t *lv, const archive_t *arc, const level_list_t *list,
+                          int *dead_frames, char *err, size_t errlen, bool *quit)
+{
+    process_keys();
     process_look();
     if (G.keys[0x20] && G.keys[0x3A] && G.keys[0x2D] && G.you)
         G.you->animator = A_XLEVEL;
     switch (G.quitflag) {
-    case 3: {
+    case 0:
+        if (!(G.old_game_flags & 0x4000) && G.message_on)
+            spawn_hints();
+        return false;
+    case 1:
+        *quit = true;
+        return false;
+    case 3: case 7: {
         if (G.diff_mode == 0) {
             Inv.hit_points[0] = Inv.hit_points[1] = 10;
         } else {
@@ -313,8 +440,16 @@ static bool process_level(level_t *lv, const archive_t *arc, const level_list_t 
             if (Inv.hit_points[i] > Inv.max_hit_points[i])
                 Inv.hit_points[i] = Inv.max_hit_points[i];
         Inv.flags &= 0xFC;
-        const int next = lv->number + 1 < 27 ? lv->number + 1 : 0;
-        printf("level %d done: on to level %d\n", lv->number, next);
+        int next = lv->number + 1 < 27 ? lv->number + 1 : 0;
+        if (G.quitflag == 7)
+            next = G.next_level + 1;
+        if (next <= 2 || next == 8 || next == 9) {
+            /* the start of an episode: the hints begin again */
+            G.old_game_flags = 0;
+            G.game_flags &= 0x0F;
+        }
+        printf(G.quitflag == 7 ? "level %d: warped to level %d\n" : "level %d done: on to level %d\n",
+               lv->number, next);
         if (!start_level(lv, arc, list, next, err, errlen))
             fprintf(stderr, "roc: %s\n", err);
         return true;
@@ -331,6 +466,7 @@ static bool process_level(level_t *lv, const archive_t *arc, const level_list_t 
         if (++*dead_frames < 100)
             return false;
         *dead_frames = 0;
+        G.next_score_up = G.old_next_score_up;
         {
             const inventory_t old = G.old_inv;
             Inv = old;
@@ -352,6 +488,46 @@ static bool process_level(level_t *lv, const archive_t *arc, const level_list_t 
     default:
         return false;
     }
+}
+
+/* The _MenuComing values that open a window (the others aren't ported, or aren't windows). */
+static bool window_menu(int menu)
+{
+    return menu == MENU_STATUS || menu == MENU_QUIT || menu == MENU_HELP || menu == MENU_WARP ||
+           (menu >= MENU_CHEAT && menu <= MENU_CHEAT + 5);
+}
+
+/* Open the window `menu` over the frame in `view`. The reader (F1) is shown on the reader's own
+ * level, 28 ("text"): its picture and its palette. */
+static void open_window(int menu, surface_t *view, const archive_t *arc, const level_list_t *list)
+{
+    if (menu == MENU_HELP) {
+        level_t text;
+        char err[256];
+        memset(&text, 0, sizeof text);
+        if (level_load(&text, arc, list, 28, err, sizeof err)) {
+            surface_fill(view, 0);
+            level_draw(&text, view, 0, 0);
+            ui_open(menu, view, text.palette);
+            level_free(&text);
+            return;
+        }
+    }
+    ui_open(menu, view, NULL);
+}
+
+/* A frame of the open window (and F11, which works in the windows too). A warp typed in the
+ * warp menu becomes _quitflag 7. True when the player chose to quit. */
+static bool run_window(int ticks)
+{
+    gamma_key();
+    int level = 0;
+    const ui_result_t r = ui_update(ticks, &level);
+    if (r == UI_WARP) {
+        G.next_level = (uint8_t)(level - 1);
+        G.quitflag = 7;
+    }
+    return r == UI_QUIT;
 }
 
 static void render(surface_t *view, const level_t *lv, int cam_x, int cam_y, bool objects)
@@ -403,8 +579,27 @@ static int run_headless(const options_t *opt, level_t *lv, const archive_t *arc,
             G.org_x = (uint16_t)opt->x;
             G.org_y = (uint16_t)opt->y;
         }
-        game_frame((uint16_t)(opt->ticks - t < 8 ? opt->ticks - t : 8));
-        process_level(lv, arc, list, &dead_frames, err, sizeof err);
+        const int step = (int)(opt->ticks - t < 8 ? opt->ticks - t : 8);
+        if (ui_active()) {
+            /* a window is open: the game waits (PAUSEACTION) */
+            if (run_window(step)) {
+                printf("quit\n");
+                break;
+            }
+            continue;
+        }
+        game_frame((uint16_t)step);
+        bool quit = false;
+        process_level(lv, arc, list, &dead_frames, err, sizeof err, &quit);
+        if (quit) {
+            printf("quit\n");
+            break;
+        }
+        if (window_menu(G.menu_coming)) {
+            render(view, lv, G.org_x, G.org_y, !opt->no_objects);
+            open_window(G.menu_coming, view, arc, list);
+            G.menu_coming = MENU_NONE;
+        }
         if (opt->trace && (t + 8) % opt->trace == 0 && G.you)
             printf("  t %5ld  player %4u,%4u  anim %04x  hp %u/%u  gems %u  flags %02x  "
                    "hitagain %d\n",
@@ -421,7 +616,9 @@ static int run_headless(const options_t *opt, level_t *lv, const archive_t *arc,
     cam_x = G.org_x;
     cam_y = G.org_y;
     render(view, lv, cam_x, cam_y, !opt->no_objects);
-    const int rc = save_png(opt->screenshot, view, lv->palette);
+    if (ui_active())
+        memcpy(view->px, ui_screen()->px, (size_t)view->w * view->h);
+    const int rc = save_png(opt->screenshot, view, ui_palette() ? ui_palette() : lv->palette);
     if (rc)
         fprintf(stderr, "roc: can't write %s\n", opt->screenshot);
     int count[LIST_COUNT] = {0};
@@ -451,7 +648,7 @@ int main(int argc, char **argv)
     if (!parse_args(argc, argv, &opt)) {
         fprintf(stderr, "usage: roc ROC.EXE [--level N] [--pos X,Y] [--player X,Y] "
                         "[--no-objects] [--ticks N] [--trace N] [--female] [--gems N] "
-                        "[--boss-hits N] [--invincible] [--difficulty N] [--collect K] [--hold ACTION:FROM-TO,...] [--sweep] "
+                        "[--boss-hits N] [--invincible] [--difficulty N] [--collect K] [--score N] [--hold ACTION:FROM-TO,...] [--sweep] "
                         "[--list] [--screenshot out.png]\n");
         return 2;
     }
@@ -470,6 +667,7 @@ int main(int argc, char **argv)
     memset(&lv, 0, sizeof lv);
     game_new(!opt.female, (uint8_t)opt.difficulty);
     Inv.gems = (uint16_t)opt.gems;
+    Inv.score = (uint32_t)opt.score;
     invincible = opt.invincible;
     if (!start_level(&lv, &arc, &list, opt.level, err, sizeof err)) {
         fprintf(stderr, "roc: %s\n", err);
@@ -525,7 +723,7 @@ int main(int argc, char **argv)
     uint32_t *argb = malloc(VIEW_W * VIEW_H * sizeof *argb);
 
     int shot = 0, cam_x = G.org_x, cam_y = G.org_y, dead_frames = 0;
-    bool running = true, show_objects = !opt.no_objects, free_camera = false, paused = false;
+    bool running = true, show_objects = !opt.no_objects, free_camera = false;
     const double freq = (double)SDL_GetPerformanceFrequency();
     Uint64 last = SDL_GetPerformanceCounter();
     double tick_acc = 0;
@@ -540,29 +738,30 @@ int main(int argc, char **argv)
                     G.keys[pc] = e.type == SDL_KEYDOWN;
                 if (e.type == SDL_KEYUP || e.key.repeat)
                     continue;
+                if (e.key.keysym.scancode == SDL_SCANCODE_PAUSE)
+                    G.pause_hit = 1; /* _PauseHit, from the keyboard interrupt */
                 const SDL_Keycode k = e.key.keysym.sym;
                 int next = -1;
-                if (k == SDLK_ESCAPE)
-                    running = false;
+                if (k == SDLK_ESCAPE && !ui_active())
+                    running = false; /* (the original's Esc opens the main menu: not ported) */
                 else if (k == SDLK_RIGHTBRACKET)
                     next = (lv.number + 1) % LEVEL_COUNT;
                 else if (k == SDLK_LEFTBRACKET)
                     next = (lv.number + LEVEL_COUNT - 1) % LEVEL_COUNT;
-                else if (k == SDLK_o)
+                else if (k == SDLK_o && !ui_active())
                     show_objects = !show_objects;
-                else if (k == SDLK_c) {
+                else if (k == SDLK_c && !ui_active()) {
                     free_camera = !free_camera;
                     cam_x = G.org_x;
                     cam_y = G.org_y;
-                } else if (k == SDLK_p)
-                    paused = !paused;
-                else if (k == SDLK_F12) {
+                } else if (k == SDLK_F12) {
                     char name[32];
                     snprintf(name, sizeof name, "shot%03d.png", shot++);
                     if (save_png(name, &view, lv.palette) == 0)
                         printf("saved %s\n", name);
                 }
-                if (next >= 0 && !start_level(&lv, &arc, &list, next, err, sizeof err))
+                if (next >= 0 && !ui_active() &&
+                    !start_level(&lv, &arc, &list, next, err, sizeof err))
                     fprintf(stderr, "roc: %s\n", err);
             }
         }
@@ -575,41 +774,52 @@ int main(int argc, char **argv)
         if (ticks > 100)
             ticks = 100;
 
-        if (free_camera) {
-            /* The arrows move the view instead of the player. */
-            const Uint8 *keys = SDL_GetKeyboardState(NULL);
-            const int step = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] ? 12 : 3;
-            cam_x += (keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT]) * step;
-            cam_y += (keys[SDL_SCANCODE_DOWN] - keys[SDL_SCANCODE_UP]) * step;
-            clamp_camera(&lv, &cam_x, &cam_y);
-            for (int a = 0; a < 4; a++)
-                G.keys[G.key_trans[a] & 0x7F] = 0;
-        }
-        if (!paused) {
+        if (ui_active()) {
+            /* a window is open: the game waits (PAUSEACTION) and the window takes the keys */
+            if (run_window(ticks))
+                running = false;
+            memcpy(view.px, ui_screen()->px, (size_t)view.w * view.h);
+        } else {
+            if (free_camera) {
+                /* The arrows move the view instead of the player. */
+                const Uint8 *keys = SDL_GetKeyboardState(NULL);
+                const int step = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] ? 12 : 3;
+                cam_x += (keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT]) * step;
+                cam_y += (keys[SDL_SCANCODE_DOWN] - keys[SDL_SCANCODE_UP]) * step;
+                clamp_camera(&lv, &cam_x, &cam_y);
+                for (int a = 0; a < 4; a++)
+                    G.keys[G.key_trans[a] & 0x7F] = 0;
+            }
             game_frame((uint16_t)ticks);
-            process_level(&lv, &arc, &list, &dead_frames, err, sizeof err);
+            bool quit = false;
+            process_level(&lv, &arc, &list, &dead_frames, err, sizeof err, &quit);
+            if (quit)
+                running = false;
+            if (G.you && G.you->y > G.max_y + 64 && !G.quitflag) {
+                /* Fell out of the map where no hazard tile catches it: start the level again. */
+                if (!start_level(&lv, &arc, &list, lv.number, err, sizeof err))
+                    fprintf(stderr, "roc: %s\n", err);
+            }
+            if (!free_camera) {
+                cam_x = G.org_x;
+                cam_y = G.org_y;
+            }
+            render(&view, &lv, cam_x, cam_y, show_objects);
+            if (window_menu(G.menu_coming)) {
+                open_window(G.menu_coming, &view, &arc, &list);
+                G.menu_coming = MENU_NONE;
+                memcpy(view.px, ui_screen()->px, (size_t)view.w * view.h);
+            }
         }
-        if (G.you && G.you->y > G.max_y + 64 && !G.quitflag) {
-            /* Fell out of the map where no hazard tile catches it: start the level again. */
-            if (!start_level(&lv, &arc, &list, lv.number, err, sizeof err))
-                fprintf(stderr, "roc: %s\n", err);
-        }
-        if (!free_camera) {
-            cam_x = G.org_x;
-            cam_y = G.org_y;
-        }
-
-        render(&view, &lv, cam_x, cam_y, show_objects);
-        to_argb(&view, lv.palette, argb);
+        to_argb(&view, ui_palette() ? ui_palette() : lv.palette, G.gamma, argb);
         SDL_UpdateTexture(tex, NULL, argb, VIEW_W * sizeof *argb);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, NULL, NULL);
         SDL_RenderPresent(ren);
 
         char title[128];
-        snprintf(title, sizeof title, "Realms of Chaos - level %d %s (%d,%d)%s%s", lv.number,
-                 list.name[lv.number], cam_x, cam_y, free_camera ? " [free camera]" : "",
-                 paused ? " [paused]" : "");
+        snprintf(title, sizeof title, "Realms of Chaos - level %d %s (%d,%d)%s", lv.number,
+                 list.name[lv.number], cam_x, cam_y, free_camera ? " [free camera]" : "");
         SDL_SetWindowTitle(win, title);
     }
 

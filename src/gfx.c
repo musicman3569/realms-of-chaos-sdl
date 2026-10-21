@@ -83,7 +83,8 @@ void spriteset_free(spriteset_t *set)
     memset(set, 0, sizeof *set);
 }
 
-static void blit_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool flip, int color)
+static void blit_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool flip, int color,
+                        const uint8_t *map)
 {
     /* Ops (DRWSPRIT.ASM CODE0..CODE3): 0 skip count rows, 1 copy count pixels downwards,
      * 2 next column, 3 end. */
@@ -100,7 +101,8 @@ static void blit_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool fli
                 return;
             const int px = flip ? x + sp->cols - 1 - col : x + col;
             for (int k = 0; k < count; k++)
-                put(s, px, y + row + k, color < 0 ? d[q + k] : (uint8_t)color);
+                put(s, px, y + row + k,
+                    map ? map[d[q + k]] : color < 0 ? d[q + k] : (uint8_t)color);
             q += (size_t)count;
             row += count;
         } else if (op == 2) {
@@ -114,12 +116,17 @@ static void blit_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool fli
 
 void draw_sprite(surface_t *s, const sprite_t *sp, int x, int y, bool flip)
 {
-    blit_sprite(s, sp, x, y, flip, -1);
+    blit_sprite(s, sp, x, y, flip, -1, NULL);
 }
 
 void draw_sprite_color(surface_t *s, const sprite_t *sp, int x, int y, bool flip, uint8_t color)
 {
-    blit_sprite(s, sp, x, y, flip, color);
+    blit_sprite(s, sp, x, y, flip, color, NULL);
+}
+
+void draw_sprite_mapped(surface_t *s, const sprite_t *sp, int x, int y, const uint8_t *map)
+{
+    blit_sprite(s, sp, x, y, false, -1, map);
 }
 
 /* ------------------------------------------------------------------------------------------ */

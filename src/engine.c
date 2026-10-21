@@ -663,6 +663,7 @@ void game_frame(uint16_t ticks)
      * foreground lists once per tick and the slow list once per frame. (RUNANIMTILES isn't
      * ported.) */
     G.timer_ticks = (uint16_t)(G.timer_ticks + ticks);
+    G.level_tics += ticks; /* (_TimerTics, for the level's clock) */
     if (G.timer_ticks >= 0x24) {
         G.timer_ticks = 0;
         level_timer();
@@ -748,13 +749,48 @@ static int find_set(const char *name)
     return -1;
 }
 
-static bool play_male = true;
+static bool load_set(const archive_t *arc, int k)
+{
+    char path[32];
+    snprintf(path, sizeof path, "%s.spr", image_sets[k].name);
+    size_t len;
+    uint8_t *file = arc_load(arc, path, &len);
+    if (!file || !spriteset_parse(&G.sets[k], file, len))
+        return false;
+    for (int f = 0; f < image_sets[k].count && f < G.sets[k].count; f++)
+        G.img[image_sets[k].base + f] = &G.sets[k].frames[f];
+    return true;
+}
+
+bool game_need_set(int base)
+{
+    for (int k = 0; k < IMG_SETS; k++)
+        if (image_sets[k].base == base)
+            return G.sets[k].file || (G.arc && load_set(G.arc, k));
+    return false;
+}
+
 static uint8_t difficulty = 2;
+
+/* What lasts from level to level besides the inventory: _GameFlags (the hero, bit 4, and the
+ * hints' bits) and _OldGameFlags, the settings (status display, hints, blood, gamma) and the next
+ * score bonus. game_end keeps them from the level being left, and game_start puts them back. */
+static struct {
+    uint16_t game_flags, old_game_flags;
+    uint8_t status_on, message_on, blood_on, gamma;
+    uint32_t next_score_up;
+} session;
 
 void game_new(bool male, uint8_t diff)
 {
-    play_male = male;
     difficulty = diff < 5 ? diff : 4;
+    session.game_flags = male ? 4 : 0;
+    session.old_game_flags = 0;
+    /* the defaults ROC.EXE starts with (ROC.CFG, not read, can change them) */
+    session.status_on = session.message_on = session.blood_on = 1;
+    session.gamma = 0;
+    /* GAMEINIT: an extra hit point every 10000 points (15000 on the hardest) */
+    session.next_score_up = difficulty == 4 ? 15000 : 10000;
     /* A new game's inventory: 4 / 6 hit points (what the level-end and death code restore),
      * the first whip and fireball. */
     memset(&Inv, 0, sizeof Inv);
@@ -770,9 +806,17 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     G.level = (uint8_t)lv->number;
     G.seed = 1;
     G.diff_mode = difficulty;
-    G.game_flags = play_male ? 4 : 0; /* _GameFlags bit 2: the male character */
-    G.blood_on = 1;
-    G.status_on = 1;
+    /* NEWLEVELSETUP keeps _GameFlags but for climbing, attacking and recovering */
+    G.game_flags = session.game_flags & 0xFFF4;
+    G.old_game_flags = session.old_game_flags & ~0x4000;
+    G.blood_on = session.blood_on;
+    G.status_on = session.status_on;
+    G.message_on = session.message_on;
+    G.gamma = session.gamma;
+    G.next_score_up = G.old_next_score_up = session.next_score_up;
+    G.next_second = 0x246;
+    G.menu_coming = -1;
+    G.cheat_attempt = 200; /* (the EXE starts it at 0x32, which only Backspace leaves) */
     /* NEWLEVELSETUP: what a death goes back to, and the castle levels' warp table
      * (roc1warp.008 for castle1, .009 for castle2). */
     Inv.weapon_status[0] = Inv.weapon_status[1] = 0;
@@ -813,17 +857,11 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
         const int k = find_set(lv->objects[i].name);
         if (k < 0 || G.sets[k].file)
             continue;
-        char path[32];
-        snprintf(path, sizeof path, "%s.spr", image_sets[k].name);
-        size_t len;
-        uint8_t *file = arc_load(arc, path, &len);
-        if (!file || !spriteset_parse(&G.sets[k], file, len)) {
-            snprintf(err, errlen, "can't load %s from ROC.DAT", path);
+        if (!load_set(arc, k)) {
+            snprintf(err, errlen, "can't load %s.spr from ROC.DAT", image_sets[k].name);
             game_end();
             return false;
         }
-        for (int f = 0; f < image_sets[k].count && f < G.sets[k].count; f++)
-            G.img[image_sets[k].base + f] = &G.sets[k].frames[f];
     }
     for (int i = 0; i < lv->object_count; i++) {
         const level_object_t *e = &lv->objects[i];
@@ -911,6 +949,15 @@ void game_view_on_player(void)
 
 void game_end(void)
 {
+    if (G.lv) {
+        session.game_flags = G.game_flags;
+        session.old_game_flags = G.old_game_flags;
+        session.status_on = G.status_on;
+        session.message_on = G.message_on;
+        session.blood_on = G.blood_on;
+        session.gamma = G.gamma;
+        session.next_score_up = G.next_score_up;
+    }
     for (int id = 0; id < LIST_COUNT; id++) {
         while (G.list[id]) {
             obj_t *o = G.list[id];

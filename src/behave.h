@@ -48,6 +48,7 @@ int exploder_spawner(obj_t *o);
 int splash_spawner(obj_t *o);
 int do_collectable(obj_t *o);
 int boss_hit_points(obj_t *o);
+int do_hints(obj_t *o);
 uint8_t boss_max_hits(int boss);                  /* by boss: 0 Ross ... 4 the demon */
 
 /* engine.c (RXTIMERF.C) */

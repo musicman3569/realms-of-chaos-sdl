@@ -1046,3 +1046,110 @@ int xlevel(obj_t *o)
     }
     return 0;
 }
+
+/* RXGENERL.C:1325 DOHINTS (type 0x36): a hint picture (HintLernID / HintsID) at the view's left,
+ * which slides up a pixel at each carry of 0x4000 from view y 0xc6 to 0xa1, stays 0x579 ticks
+ * (then another may come: _OldGameFlags 0x4000 cleared), and slides back down and goes. Turning
+ * the hints off (_MessageOn) takes it away. */
+int do_hints(obj_t *o)
+{
+    o->x = (uint16_t)(G.org_x + 0x10);
+    o->y = (uint16_t)(G.org_y + o->gv[0]);
+    if (!carry(&o->ypart, 0x4000))
+        return 0;
+    if (G.message_on) {
+        if (o->gv[1] == 0) {
+            if (o->gv[0] > 0xA1)
+                o->gv[0]--;
+            else {
+                o->gv[1]++;
+                o->counter = 0;
+            }
+            return 0;
+        }
+        if (o->gv[1] == 1) {
+            if (o->counter >= 0x579) {
+                G.old_game_flags &= 0xBFFF;
+                o->gv[1]++;
+            }
+            return 0;
+        }
+        if (o->gv[0] < 0xC6) {
+            o->gv[0]++;
+            return 0;
+        }
+    }
+    obj_kill(o);
+    return 0;
+}
+
+/* RXNEWLVF.C:586 SPAWNHINTS (PROCESSLEVEL, while no hint is up and the hints are on): the next
+ * hint the play so far calls for. On the first two levels the lessons (HintLernID) come first:
+ * the controls ([4], then [6]), low health ([5]), and the first gem, statue, prize or secret
+ * (_GameFlags 0x10 / 0x40 / 0x80 / 0x20, each once); then the general hints (HintsID): the exit
+ * found ([3]), an extra hit point ([1]), the last ([2]), a statue too dear ([6], once), magic
+ * items ([4], [5], once each), the special item ([7], once) and poison ([0], once). */
+void spawn_hints(void)
+{
+    const sprite_t *hint = NULL;
+    const uint16_t gf = G.game_flags, of = G.old_game_flags;
+    if (G.level < 2) {
+        const uint8_t hp = *you_hp();
+        if (!(of & 0x400)) {
+            G.old_game_flags |= 0x400;
+            hint = G.img[IMG_HINTLERN + 4];
+        } else if (!(of & 4)) {
+            G.old_game_flags |= 4;
+            hint = G.img[IMG_HINTLERN + 6];
+        } else if (!(gf & 0x1000) && (hp == 1 || (G.diff_mode > 2 && hp == 2))) {
+            G.game_flags |= 0x1000;
+            hint = G.img[IMG_HINTLERN + 5];
+        } else if ((gf & 0x10) && !(of & 0x10)) {
+            G.old_game_flags |= 0x10;
+            hint = G.img[IMG_HINTLERN];
+        } else if ((gf & 0x40) && !(of & 0x40)) {
+            G.old_game_flags |= 0x40;
+            hint = G.img[IMG_HINTLERN + 1];
+        } else if ((gf & 0x80) && !(of & 0x80)) {
+            G.old_game_flags |= 0x80;
+            hint = G.img[IMG_HINTLERN + 2];
+        } else if ((gf & 0x20) && !(of & 0x20)) {
+            G.old_game_flags |= 0x20;
+            hint = G.img[IMG_HINTLERN + 3];
+        }
+        if (hint) {
+            spawn_obj(0x36, LIST_FORE, hint, (uint16_t)(G.org_x + 0x10), (uint16_t)(G.org_y + 0xC6));
+            hint = NULL;
+        }
+    }
+    if (G.old_game_flags & 0x4000)
+        return;
+    const uint16_t g = G.game_flags, o = G.old_game_flags;
+    if (o & 1) {
+        G.old_game_flags &= 0xFFFE;
+        hint = G.img[IMG_HINTS + 3];
+    } else if (g & 0x800) {
+        G.game_flags &= 0xF7FF;
+        hint = G.img[IMG_HINTS + 1];
+    } else if ((g & 0x400) && !(o & 2)) {
+        G.old_game_flags |= 2;
+        hint = G.img[IMG_HINTS + 6];
+    } else if (g & 0x8000) {
+        G.game_flags &= 0x7FFF;
+        hint = G.img[IMG_HINTS + 2];
+    } else if ((g & 0x200) && !(o & 0x200)) {
+        G.old_game_flags |= 0x200;
+        hint = G.img[IMG_HINTS + 4];
+    } else if ((g & 0x2000) && !(o & 0x2000)) {
+        G.old_game_flags |= 0x2000;
+        hint = G.img[IMG_HINTS + 5];
+    } else if ((g & 0x4000) && !(o & 0x100)) {
+        G.old_game_flags |= 0x100;
+        hint = G.img[IMG_HINTS + 7];
+    } else if ((Inv.flags & 3) && !(g & 0x100)) {
+        G.game_flags |= 0x100;
+        hint = G.img[IMG_HINTS];
+    }
+    if (hint)
+        spawn_obj(0x36, LIST_FORE, hint, (uint16_t)(G.org_x + 0x10), (uint16_t)(G.org_y + 0xC6));
+}

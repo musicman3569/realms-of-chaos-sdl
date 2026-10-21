@@ -433,6 +433,69 @@ from acting meanwhile.
 Animator. It sets `_YouInvincible` and moves the player a pixel a tick with the arrows (PLAYERUP...,
 so the view follows), through walls, within the map; the jump key lands them (YOUBEGINRUN).
 
+## Windows, cheats and hints
+
+**PROCESSLEVEL** (RXLEVEL.C:54) runs once a frame. In order: the level's clock (`_SecondInLevel`
+/ `_MinuteInLevel`, a second every 0x247 ticks of `_TimerTics`, every fifth 0x244), the window
+`_MenuComing` asked for the frame before, then the keys: Esc 0 (MAINMENU), F1 the help (`_quitflag`
+5: the game is saved, the reader shown on its own level, the game restored), F3 6 (LOADMENU), F4
+5 (SOUNDMENU), F8 / F9 8 / 9 (QUICKMENU), F10 10 (PROMPTWIN), F2 4 (SAVEMENU), F6 / Tab / Pause
+11 (STATUSWIN); F11 the gamma (`_GammaCorrect` + 4, from 16 back to 0; SETPALETTE adds it to every
+component and caps at 63); F5 the status display (debounced over 6 frames; turning it on is
+`_MenuComing` 12, which respawns the hit points and gem displays); the cheat codes; every
+`_NextScoreUp` points (10000, 15000 on the hardest, then each 10000) both heroes' maximum hit
+points + 2 (to 10) and refilled, with a hint; the look keys and the fly mode (see below); then the
+`_quitflag` cases (0 playing: SPAWNHINTS while no hint is up; 1 quit; 3 and 7, a warp, share the
+level-end code, `_nextlevel` + 1).
+
+**Windows** (RXWINDF.C and the assembly at 3f50). WINUP(col, row, cols, rows, border, ...,
+top title, bottom title) freezes the game (PAUSEACTION), records the screen area (SAVEPAGE),
+centres the window when col / row is -1 (`_WinX` = 0xa0 - cols * 4, `_WinY` = 100 - rows * 4),
+and draws an 8x8-tile frame from a 12-frame border set (corners 0, 2, 9, 11; edges 1, 3, 5, 10;
+title band joins 6, 7, 8; fill 4) with title bands 16 pixels high (`_TopOff` / `_BotOff`), then
+fills the inside with frame 4 (WINCLEARTEXTAREA). Its third and first arguments are unused. The
+in-level windows use Border2ID, whose frames are all empty in ROC.DAT, so they show no frame:
+the text sits on the frozen game. SYSPIXELWRITE(x, y, s) writes RocFontID at (`_WinX` + x, `_WinY`
++ `_TopOff` + y): DS:1fb2 maps characters to frames, `{n}` picks font colour table n (DS:0e52, 5
+bytes each: the blitter xlats each font pixel, values 0-4, through it; 14 and 15 are plain), `{-}`
+goes back. FONTSTRLEN sums the frames' widths plus `_FontSpaceLetters`; MENUSTR centres. DEFAULTPAL
+(`_LevelPal` colour 72 the standard yellow) picks colour table 4 or 5 and the cursor: CursorTID or
+the spinning gem CollectID[18..21]. WINDOWCURSOR2(x, y) waits for every key to be let go, then
+returns the scancode of the next key pressed and let go, turning the cursor at (x + 8, y + 0x18)
+every 20 ticks (F11 works meanwhile; a pause ends on the Pause key too).
+
+- STATUSWIN: MenuHeadID[0..1] (the portraits), "Endrick" / "Elandra" with their HpID icons and
+  "Poisoned!", the level line ("{8}E1L3: {7}" and the name from rocdesc.txt, 30-byte slots; S for
+  the secret levels) and "Gems: n   Score: n".
+- PROMPTWIN(0): "ARE YOU SURE?", "Press "Y" if you really want to quit to DOS.", and one of four
+  endings at random; Y (0x15) quits.
+- The cheats: with Backspace held, typing PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER
+  (`_CheatCodes`, DS:02b2: 7-byte rows of scancodes) calls CHEATER(0-5) or WARPMENU. CHEATER: 0
+  all of: 10 hit points for both, at least 250 gems, both weapons at full power, healed; 1-4 one
+  of them; 5 invincibility on / off. WARPMENU (BorderID, which has a real frame) reads up to two
+  characters with WINGETSTR; a number n of 1-27 is level n - 1 (`_quitflag` 7). The EXE starts
+  `_CheatAttempt` at 0x32, which only Backspace leaves (the port starts it idle).
+- The reader (F1; PAGEREADER, READERWIN, READERFETCHER): the file is pairs of NUL-ended title and
+  text; a page is a 25 x 39 window with the title on top and "Page n of m PgUp PgDn (Press ESC
+  to exit)" below; `{Txxx}` starts a new piece of line at column xxx, `{Pxxxyyynn}` puts InstIllID[nn]
+  (CollectID[nn - 10] from 10) at (xxx, yyy); the text is centred on its widest line. Keys (a CS
+  table at 2ff5:3861): Esc out, Home / End the first / last page, `-` Up PgUp Left keypad-minus
+  back, `=` Enter Space Right keypad-plus Down PgDn on (Enter on the last page leaves); rocinst.txt
+  wraps round. F1 opens rocinst.txt at page 12 (index 11). The original shows it on the reader's
+  level, 28 ("text"), so on that picture and in its palette, and so does the port.
+
+**Hints** (SPAWNHINTS, RXNEWLVF.C:586; DOHINTS, type 0x36, priority 0xfe). With `_MessageOn` (on
+by default), PROCESSLEVEL asks for the next hint whenever none is up (`_OldGameFlags` 0x4000, set by
+SETUPOBJ). On the first two levels the lessons come first (HintLernID: Esc for the main menu,
+Space to change heroes, low health, the first gem, statue, prize or secret, by `_GameFlags` 0x10,
+0x40, 0x80, 0x20 and `_OldGameFlags` bits for "shown"); then HintsID (the exit, extra and last
+hit points, statues too dear, magic items, the special item, poison). A hint slides up from view
+y 0xc6 to 0xa1 at the view's left (a pixel every 4 ticks), stays 0x579 ticks and slides away.
+`_GameFlags` and `_OldGameFlags` last from level to level (NEWLEVELSETUP clears only `_GameFlags`
+1, 2 and 8) and start again at the first levels of an episode (next level 0-2, 8, 9). The port
+also clears a leftover "hint up" bit at a level's start, which the original keeps (and which would
+stop the hints).
+
 ## Bolo cats and the snake platform
 
 **Bolo cats** (RXFRSTF.C; types 0x27 cat, 0x28 bolo). GRABSTUFF's bonus tile type 0x68 (levels 1, 2

@@ -69,7 +69,7 @@ enum {
     A_BOLOCATCOCK2 = 0x195a, A_BOLOCATTHROW = 0x1969, A_DOBOLO = 0x1978, A_WOLFRUN = 0x1ca0, A_DOARROWSIGN = 0x3010,
     A_DOEXPLOSION = 0x2e48, A_EXPLODERSPAWNER = 0x2d81, A_DOFLYINGSHIT = 0x27ed,
     A_DOCOLLECTABLE = 0x3093, A_XLEVEL = 0x3b1a, A_SCREENCENTER = 0x53f4, A_GENERICBEGINJUMP = 0x3e54,
-    A_ENEMYHITPAUSE = 0x500d, A_SPLASHSPAWNER = 0x57cc, A_OFFKILLER = 0xae48,
+    A_ENEMYHITPAUSE = 0x500d, A_SPLASHSPAWNER = 0x57cc, A_DOHINTS = 0x5728, A_OFFKILLER = 0xae48,
     A_DOFIREBALL = 0xb6a0, A_DOWHIP = 0xbaa6, A_DROPGEMSPAWNER = 0xbeda, A_DOHITPOINTS = 0xbee9,
     A_DOTRANSFORMER = 0xbef8, A_DOGEMNUMBER = 0xbf07, A_DOBLOOD = 0xbff4,
     A_GENERICJUMP = 0x3f78, A_GENERICUP = 0x3fa4, A_GENERICBEGINFALL = 0x415b,
@@ -179,7 +179,16 @@ typedef struct {
     uint16_t timer_ticks;        /* ticks towards the next LEVELTIMER run */
     uint16_t splash_side;        /* DS:38c2: SPLASHSPAWNER's side for the next bit */
     inventory_t old_inv;         /* _OldScore, _OldGems, _OldMaxHitPoints: back after a death */
-    uint16_t old_game_flags;     /* _OldGameFlags */
+    uint16_t old_game_flags;     /* _OldGameFlags: the hints already shown (0x4000: one is up) */
+    uint8_t gamma;               /* _GammaCorrect: 0-16, added to the palette (F11) */
+    uint8_t gamma_armed;         /* DS:395d: F11 was let go */
+    uint8_t status_armed, status_count; /* DS:395c / 395e: F5's debounce */
+    int8_t menu_coming;          /* _MenuComing: the window the next frame opens (ui.h) */
+    uint8_t pause_hit, main_pausing; /* _PauseHit (the Pause key), _MainPausing */
+    uint8_t cheat_attempt, cheat_count; /* _CheatAttempt / _CheatCount */
+    uint32_t next_score_up, old_next_score_up; /* _NextScoreUp: the next 10000 points */
+    uint32_t level_tics, next_second; /* the level's clock (_TimerTics, _NextSecond) */
+    uint8_t timer_fix, second_in_level, minute_in_level; /* _TimerFix, _SecondInLevel... */
     int16_t parent_priority;     /* _ParentPriority */
     uint16_t update;             /* _Update: ticks since the last frame */
     const archive_t *arc;        /* ROC.DAT, for what the behaviours load (AOPEN / READITEM) */
@@ -201,6 +210,8 @@ void game_new(bool male, uint8_t difficulty);       /* a new game: character, _D
 bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen);
 void game_end(void);
 void game_view_on_player(void);                     /* NEWLEVEL's starting view */
+bool game_need_set(int base);                       /* load an IMG_ set if the level didn't */
+void spawn_hints(void);                             /* SPAWNHINTS (rxgenerl.c) */
 
 /* One frame of RUNLEVEL: run the animators for `ticks` timer ticks (ANIMATORUPDATE), then
  * move objects between the on- and off-screen lists (SCREENLISTUPDATE). */

@@ -92,6 +92,7 @@ static const animator_t table[] = {
     {A_DOCONTAINER, do_container},
     {A_SCREENCENTER, screen_center},
     {A_BOSSHITPOINTS, boss_hit_points},
+    {A_DOHINTS, do_hints},
     {A_SPLASHSPAWNER, splash_spawner},
     {A_DOROCKMONSTER, do_rock_monster},
     {A_GOBLINSTAND, goblin_stand},

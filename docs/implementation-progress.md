@@ -80,16 +80,21 @@ build/roc.exe game/ROC.EXE --level 16 --invincible --ticks 30000 --list --screen
 build/roc.exe game/ROC.EXE --level 1 --difficulty 3 --invincible --ticks 6000 --list --screenshot out.png
 # headless: the fly-mode cheat (D + CapsLock + X held as PC scancodes), flying up and right
 build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold 0x20:500-520,0x3a:500-520,0x2d:500-520,up:600-900,right:600-2000 --screenshot out.png
+# headless: the pause window (Tab, PC scancode 0x0f, held at tick 600), with 25000 points (two bonuses)
+build/roc.exe game/ROC.EXE --level 2 --score 25000 --ticks 1200 --hold 0x0f:600-610 --screenshot out.png
 # headless: collect prize 0x21 (CollectID index: the five shields) at the start, then change hero (Space)
 build/roc.exe game/ROC.EXE --level 0 --gems 50 --collect 0x21 --ticks 4000 --hold item:1000-1010 --list --screenshot out.png
 build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
 ```
 
 `ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
-arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Space the special item (change hero), Enter + up /
-down (or PgUp / PgDn) look, D + CapsLock + X the fly-mode cheat (Ctrl lands). Viewer keys: [ and ]
-change level, C free camera (the arrows move the view), O hides the objects, P pauses, F12
-saves `shotNNN.png`, Esc quits. Reaching the exit goes on to the next level; dying restarts
+arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Space the
+special item (change hero), Enter + up / down (or PgUp / PgDn) look, F1 help (the reader), F5
+status display on / off, F6 / Tab / Pause the status window (pause), F10 quit, F11 gamma; the
+cheats: Backspace held, then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and
+D + CapsLock + X the fly mode (Ctrl lands). Viewer keys: [ and ] change level, C free camera (the
+arrows move the view), O hides the objects, F12 saves `shotNNN.png`, Esc quits (when no window
+is open; the game's main menu isn't ported). Reaching the exit goes on to the next level; dying restarts
 the level 100 frames later (no menu or story screens yet). Objects whose behaviour isn't
 ported stay still, and each such animator is reported once on stderr. Headless runs print the
 player's position and animator, the inventory and the level's counters at the end.
@@ -322,6 +327,24 @@ player's position and animator, the inventory and the level's counters at the en
   raises the view from y 59 to 7 and Enter + down lowers it to 121, each coming back when let go;
   D + CapsLock + X flies the player up and right through the forest and Ctrl drops them. Sweeps of
   all 29 levels (also looking up and down) reach no unported animator.
+- Port, PROCESSLEVEL's in-level windows (notes "Windows, cheats and hints"): new `src/ui.c`
+  with the window layer (WINUP, WINCLEARTEXTAREA, PUTWINPIC, SYSPIXELWRITE, FONTSTRLEN, MENUSTR,
+  the RocFontID font and its colour tables, ANIMATECURSOR, WINDOWCURSOR2, WINGETSTR) and the
+  windows: STATUSWIN (F6 / Tab / Pause), PROMPTWIN (F10 quit), CHEATER and WARPMENU (the cheat
+  codes), and the page reader (F1: PAGEREADER, READERWIN, READERFETCHER on rocinst.txt, shown on
+  the reader's level 28 and its palette as the original does). In `src/main.c` the rest of
+  PROCESSLEVEL: the level's clock, `_MenuComing`, F5 (status display), F11 (gamma, applied when
+  the palette is shown, like SETPALETTE), the cheat codes, the extra hit points every 10000
+  points, SPAWNHINTS and `_quitflag` 1 / 7. DOHINTS and SPAWNHINTS (the hint pictures) in
+  `src/rxgenerl.c`. `game_start` now carries `_GameFlags` (the hero and the hints),
+  `_OldGameFlags`, the settings and the next score bonus over from the level before; until now
+  a hero changed with Space reverted at the next level. `--score N` starts with N points. The
+  viewer's P pause is gone (the game pauses itself). Verified headless: the status window shows
+  both heroes, the level line (E1L3: Threnody Wood) and the gems and score; Y in the quit prompt
+  quits and another key goes back; PRIME, WIND and ETHER work, and typing 26 in the warp menu
+  starts level 25; F1 opens page 12 of 33 and PgDn turns it; on level 0 the hints "Press ESC for
+  the main menu" and "Press SPACEBAR to change heroes!" slide up in turn; F5 and F11 work; 25000
+  points make two bonuses; the female carries into the next level. All sweeps are clean.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -329,20 +352,18 @@ player's position and animator, the inventory and the level's counters at the en
 
 ## Next steps
 
-1. **The rest of PROCESSLEVEL** (next). Every behaviour a level reaches is ported (a `--sweep`
-   run lists any animator that isn't; it needs `--screenshot`, or it opens a window;
-   `tools/animators.py` maps object types to animators). The decompiles are easiest to read
-   from GhidraMCP's HTTP backend: `http://127.0.0.1:8080/decompile?name=PROCESSLEVEL`. What
-   PROCESSLEVEL still lacks: the other
-   cheats (CHEATER, WARPMENU, which sets `_LightningFlag`), the function keys (help, sound,
-   music, save / load: F1-F10), pause, the score's extra hit points every 10000 points, and the
-   hints (SPAWNHINTS); then:
-2. **The game loop**: `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
-   `PROCESSLEVEL`. Objects are `OBJstruct` (48 bytes) whose `Animator` field is a near pointer
-   to a behaviour function (`DOGARGOYLE`, `YOURUN`...). Every behaviour decompiles readably
-   now.
-3. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
+1. **The game loop** (next): `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
+   `PROCESSLEVEL`, with the windows left from PROCESSLEVEL, which belong with the menus: Esc's
+   MAINMENU (with DIFFICULTYMENU, OPTIONMENU...), F2 / F3 SAVEMENU / LOADMENU and F8 / F9
+   QUICKMENU (SAVEGAME / RESTOREGAME, the object serializer), F4 SOUNDMENU (once there's sound),
+   ROC.CFG (LOADCONFIGFILE: keys, MessageOn, StatusOn, GammaCorrect...), the level-end windows
+   (PERCENTWIN, FINALPERCENTWIN, the high scores) and the story readers (roccast.txt...). Every
+   behaviour a level reaches is ported (a `--sweep` run lists any animator that isn't; it needs
+   `--screenshot`, or it opens a window; `tools/animators.py` maps object types to animators).
+   The decompiles are easiest to read from GhidraMCP's HTTP backend:
+   `http://127.0.0.1:8080/decompile?name=MAINMENU`.
+2. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
    `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
    are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
-4. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
+3. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
    (Apogee Sound System; VOC effects and MIDI music).

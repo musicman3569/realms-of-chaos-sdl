@@ -840,6 +840,13 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[3] = (int16_t)(o->x - G.you->x);
         o->gv[4] = (int16_t)(o->y - G.you->y);
         break;
+    case 0x36: /* a hint (SPAWNHINTS), sliding up from the view's bottom */
+        G.old_game_flags |= 0x4000;
+        o->priority = 0xFE;
+        o->animator = A_DOHINTS;
+        o->gv[0] = 0xC6;
+        o->gv[1] = 0;
+        break;
     case 0x37: /* the special item (DOTRANSFORMER), which takes the item until it's done */
         o->flags |= OF_RATE;
         G.you->gv[5] &= 0xFFEF;
