@@ -214,6 +214,16 @@ player's position and animator, the inventory and the level's counters at the en
   throws five knives, jumps across with his sword, lunges from the left and runs back, and keeps
   the player inside the room; fireballs take him down (the bar follows), he flickers through 200
   explosions and 1000 ticks later the level is won and level 8 starts.
+- Port, the dragon (swampb, level 10; notes "The dragon"): in `src/rxswamp.c` (RXSWAMPF.C)
+  FDRAGONCENTER (the camera), FDODRAGONBOB, SPIT, FIRE, BOOM, NECK, FDRAGONNECKDIE and
+  FDRAGONHEADDIE with the `_DragonMove` delay lines; the dragon's death in ENEMYHIT and
+  DRAGONHEADDIE in GENERICUP / GENERICFALL; INITLEVEL's four necks; SETUPOBJ types 0x4b (neck)
+  and 0x4c (fireball). `spawn_shake` (ROSSSHAKE) is now shared. Verified headless: the view pans
+  to x 0xbe with the player frozen, the bar appears, the head bobs and every 200 ticks rears and
+  spits a fireball that lands, bursts (shaking the view) and brings frogs out of the swamp; the
+  necks ripple behind the head; struck down (a hit forced for the test: the scripted player is
+  always knocked back before reaching the head) the head flies off and bounces, the stump
+  thrashes and bleeds, and 2000 ticks later level 11 starts.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -223,13 +233,18 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **The other bosses** (next), one at a time with their cameras; a `--sweep` run lists the
    animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
-   window), and `--boss-hits` shortens a fight. Left: the dragon, DODRAGONBOB / DRAGONCENTER
-   (9, 10; RXSWAMPF.C), the crusher's camera, CRUSHERCENTER (15; RXMUSH.C), the goblin boss's
-   head, BOSSCENTER (16; RXGOBLIN.C / RXBOSSF.C), and the demon, DEMONWAIT / DEMONCENTER (25;
-   RXDEMONF.C); BOSSHITPOINTS and ROSSSHAKE are already there for them. The skeletons (SKEL*,
+   window), and `--boss-hits` shortens a fight. Left: the crusher's camera, CRUSHERCENTER (15;
+   RXMUSH.C), the goblin boss's head, BOSSCENTER (16; RXGOBLIN.C / RXBOSSF.C), level 20's
+   skeleton boss (type 0x53, which INITLEVEL spawns: not yet), and the demon, DEMONWAIT /
+   DEMONCENTER (25; RXDEMONF.C); BOSSHITPOINTS and ROSSSHAKE are already there for them.
+   **INITLEVEL** (RXOBJF.C:391, ported in `game_start`) still lacks these spawns, which is
+   why the sweeps never reach them: type 0x29 on levels 1, 3 and 22 above difficulty 2; level
+   13's 0x2b (CAVESCROLLER) and its torches (0x2c, DOTORCH); 16 background stars (0x16) on
+   levels 11 and 12; type 0x11 (BOULDERSPAWNER) on levels 17 and 19; level 20's boss (0x53,
+   twice: `_Boss` and `_Neck[0]`). The skeletons (SKEL*,
    DOSKELHEAD) in RXSKELF.C are spawned by a boss, not placed; DOTORCH (type 0x2c) isn't placed
    by INITOBJ either. The priorities GENERICUP / GENERICFALL still skip (`own_behaviour` in
-   `src/rxgenerl.c`: 0x66, 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the boulders. `tools/animators.py` maps object types to animators. Left over from the damage
+   `src/rxgenerl.c`: 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the boulders. `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats

@@ -122,8 +122,11 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x3C:
         ross_jump(o);
         return;
-    case 0x66: case 0x49: case 0x47: case 0x97: case 0x4A:
-        return; /* DRAGONHEADDIE, FDOSPITTLE2, ...: not ported yet */
+    case 0x66:
+        dragon_head_die(o);
+        return;
+    case 0x49: case 0x47: case 0x97: case 0x4A:
+        return; /* FDOSPITTLE2, FBOSSHEADBOUNCE, ...: not ported yet */
     case 0x4E:
         if (!falling)
             break;
@@ -535,7 +538,20 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
         o->gv[2] = (int16_t)o->x;
         return;
     }
-    if (pr == 0x66 || pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
+    if (pr == 0x66) {
+        /* the dragon: its head is struck off and flies away */
+        play_sample(0x85, NULL);
+        G.boss->animator = A_GENERICBEGINJUMP;
+        G.boss->yspeed = -10000;
+        G.boss->xspeed = 0x4000;
+        o->gv[4] = 0x78;
+        o->gv[0] = 0;
+        o->gv[1] = 0;
+        o->gv[2] = 0;
+        o->counter = 0;
+        return;
+    }
+    if (pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
         return; /* the other bosses' deaths: not ported yet */
     if (pr == 2) {
         o->old_animator = o->animator;

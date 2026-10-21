@@ -111,6 +111,14 @@ int do_frog(obj_t *o);
 int frog_launch(obj_t *o);
 void frog_jump(obj_t *o);
 int frog_land(obj_t *o);
+int dragon_center(obj_t *o);
+int do_dragon_bob(obj_t *o);
+int do_dragon_spit(obj_t *o);
+int do_dragon_fire(obj_t *o);
+int do_dragon_boom(obj_t *o);
+int do_dragon_neck(obj_t *o);
+int dragon_head_die(obj_t *o);
+int dragon_neck_die(obj_t *o);
 
 /* rxmush.c */
 int do_spore_hole(obj_t *o);
@@ -130,6 +138,7 @@ int do_back_stars(obj_t *o);
 int do_wisp(obj_t *o);
 
 /* rxross.c */
+void spawn_shake(void);                          /* a ROSSSHAKE: the view shakes */
 int ross_wait(obj_t *o);
 int ross_crash(obj_t *o);
 int ross_piece(obj_t *o);

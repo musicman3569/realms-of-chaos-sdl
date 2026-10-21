@@ -31,7 +31,7 @@ static uint8_t ross_max_hits(void)
 }
 
 /* A ROSSSHAKE: an invisible object shaking the view (spawned as a type 0x18). */
-static void spawn_shake(void)
+void spawn_shake(void)
 {
     obj_t *s = spawn_obj(0x18, LIST_MAIN, NULL, G.org_x, G.org_y);
     s->animator = A_ROSSSHAKE;

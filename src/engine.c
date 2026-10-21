@@ -790,7 +790,7 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     }
 
     /* INITLEVEL (the parts ported so far): the ambient sound and camera objects, the hit
-     * points display and the gem counter (a gem and four digits). */
+     * points display and the gem counter (a gem and four digits), the dragon's necks. */
     if (G.level < 0x1B) {
         spawn_obj(0x5C, LIST_FORE, NULL, 0, 0);
         spawn_obj(0x08, LIST_FORE, NULL, 0, 0);
@@ -802,6 +802,9 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
                 spawn_obj(0x09, LIST_SLOW, NULL, 0, 0x10)->gv[0] = (int16_t)i;
         }
     }
+    if (G.level == 10 && G.boss)
+        for (int i = 0; i < 4; i++)
+            spawn_obj(0x4B, LIST_MAIN, G.img[IMG_DRAGNECK], G.boss->x, (uint16_t)(G.boss->y - 4));
     game_view_on_player();
     return true;
 }

@@ -159,7 +159,7 @@ void setup_obj(obj_t *o, uint8_t type)
             G.window_xsize = 0x140;
             o->flags &= 0xBF;
         } else if (lv == 0x0A) {
-            o->animator = 0xB0DF; /* DRAGONCENTER */
+            o->animator = A_DRAGONCENTER;
             o->gv[0] = 0;
         } else if (lv == 0x10) {
             o->animator = 0x685D; /* BOSSCENTER */
@@ -649,6 +649,30 @@ void setup_obj(obj_t *o, uint8_t type)
         G.boss = o;
         G.neck[0] = o;
         o->gv[3] = 0;
+        break;
+    case 0x4B: /* a dragon's neck (INITLEVEL makes four): _Neck[1..4], priorities 3 .. 0 */
+        o->flags |= OF_PLACED;
+        o->animator = A_DODRAGONNECK;
+        o->priority = (int16_t)(3 - G.neck_count);
+        o->gv[0] = 0;
+        o->frame_no = 0;
+        o->frame_count = 0;
+        o->max_frames = 0;
+        o->gv[1] = (int16_t)(G.neck_count + 1);
+        G.neck[G.neck_count + 1] = o;
+        if (++G.neck_count == 4)
+            G.neck_count = 0;
+        break;
+    case 0x4C: /* the dragon's fireball */
+        o->priority = 0xEA;
+        o->animator = A_DODRAGONFIRE;
+        o->frame_count_max = 3;
+        o->max_frames = 3;
+        o->frame_no = 0;
+        o->anim_inc = 1;
+        o->yspeed = 17000;
+        o->ydir = 1;
+        o->gv[0] = 0;
         break;
     case 0x4D: /* boss head */
         o->update = 0x1000;

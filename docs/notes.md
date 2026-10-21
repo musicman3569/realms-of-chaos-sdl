@@ -559,6 +559,28 @@ RossJumpID[1]" (just landed) drive the states. ROSSDIE hides him 4 ticks in 10 (
 image at DS:50d2) with an explosion every 10 ticks, 200 in all; ROSSCLEAR wins the level 1000
 ticks later if `HitPoints[0]` (the female's) isn't 0.
 
+**The dragon** (swampb, level 10, RXSWAMPF.C). Its body is part of the background; the head
+(type 0x4a, priority 0x66, `_Boss` and `_Neck[0]`) and four necks (type 0x4b, priorities 3-0,
+`_Neck[1..4]` at DS:50ea, made by INITLEVEL) are objects. The camera (DRAGONCENTER) freezes the
+player (Animator NULLANIMATOR, the real one in OldAnimator) once the view passes x 0x28, pans
+a pixel a tick to x 0xbe, then hands over to SCREENCENTER and shows the bar. The head waits for
+that `_OrgX` and keeps the player between x 0xc3 and 0x142. It bobs with two little state
+machines (GenericVar[0] vertical, GenericVar[1] horizontal: pick a way, accelerate by 0x78,
+cruise until a 1 in 350 / 400 chance, decelerate) inside x 0x14b-0x172, y 0x3b-0x62, and its
+GenericVar[4] is a fifth of its distance from the body at x 0x193, by which the necks space
+themselves. Its FrameNo indexes `_DragonMove` (DS:50f4: 4 x 180 signed bytes; the decompile
+writes `_SavePal + 0x270 + i * 0xb4`, which is `_DragonMove[i - 1]`, and `_ParentPriority[i]`,
+which is `_Neck[i - 1]`): it records its y move each run there, and neck i, once neck i - 1's
+index reaches 90, replays `_DragonMove[i - 1]` and records it in `_DragonMove[i]`, clamped
+near its neighbours. At Counter 200 (0x23a on the other difficulties) DODRAGONSPIT rears up
+and lunges, then spits a fireball (type 0x4c); its burst (DODRAGONBOOM, ChimBoomID) spawns frogs
+like GRABSTUFF's tile 0x69 and restarts the head's Counter. FrameCount holds the roar's sound
+handle. Beaten (ENEMYHIT, priority 0x66), the head jumps away (ySpeed -10000, xSpeed 0x4000)
+and DRAGONHEADDIE bounces it once; the necks see the boss's GENERICBEGINJUMP / GENERICJUMP
+Animator (`_Img.ChainID`, `_Img.DemSideID + 8`) and turn to DRAGONNECKDIE, the first neck
+bobbing faster and bleeding while the others follow it. 2000 ticks after the head lands the
+level is won (again checking `HitPoints[0]`).
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a
