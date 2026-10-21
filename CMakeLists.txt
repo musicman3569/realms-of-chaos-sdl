@@ -29,6 +29,8 @@ add_executable(roc
     src/host.c
     src/game.c
     src/save.c
+    src/audio.c
+    src/sound.c
     src/rxross.c
     src/rxboss.c
     src/rxyou.c
@@ -41,6 +43,9 @@ if(TARGET SDL2::SDL2main)
     target_link_libraries(roc PRIVATE SDL2::SDL2main)
 endif()
 target_link_libraries(roc PRIVATE SDL2::SDL2)
+if(WIN32)
+    target_link_libraries(roc PRIVATE winmm)
+endif()
 
 if(MSVC)
     target_compile_options(roc PRIVATE /W4)

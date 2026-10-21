@@ -2,6 +2,7 @@
  * PUTWINPIC from the window assembly at 3f50). See ui.h. */
 #include "ui.h"
 
+#include "audio.h"
 #include "game.h"
 #include "host.h"
 #include "save.h"
@@ -49,13 +50,31 @@ static struct {
     uint8_t menu_pos[8];         /* DS:53e0: each menu's last line */
     uint8_t cursor_frame;        /* DS:53ec */
     uint8_t blood_temp[20];      /* DS:53ce: a new blood password, typed once */
+    int menu_voc, menu_voc2;     /* _MenuVOChandle / 2: the menus' sounds playing */
+    uint8_t volume_line;         /* DS:53eb: the sound menu's line */
 } U = {.font = IMG_ROCFONT};
+
+/* A menu line moved (_MenuVOC, sample 3) or picked (_MenuVOC2, 0xa9). */
+static void menu_click(void)
+{
+    if (fx_active(U.menu_voc))
+        fx_stop(U.menu_voc);
+    U.menu_voc = sound_fx(3);
+}
+
+static void menu_pick(void)
+{
+    if (fx_active(U.menu_voc2))
+        fx_stop(U.menu_voc2);
+    U.menu_voc2 = sound_fx(0xA9);
+}
 
 /* The sets the windows draw with (the levels' object lists load most of them). */
 static void need_sets(void)
 {
     static const int sets[] = {IMG_ROCFONT, IMG_BIGFONT, IMG_BORDER, IMG_BORDER2, IMG_BORDERT,
-                               IMG_CURSORT, IMG_COLLECT, IMG_MENUHEAD, IMG_HP, IMG_INSTILL};
+                               IMG_CURSORT, IMG_COLLECT, IMG_MENUHEAD, IMG_HP, IMG_INSTILL,
+                               IMG_SLIDER};
     for (size_t i = 0; i < sizeof sets / sizeof sets[0]; i++)
         game_need_set(sets[i]);
 }
@@ -244,6 +263,7 @@ void win_clear(void)
  * on the standard palette). */
 static void animate_cursor(int x, int y)
 {
+    maintain_sound();
     const int set = default_pal() ? IMG_COLLECT + 18 : IMG_CURSORT;
     if (++U.cursor_frame > 3)
         U.cursor_frame = 0;
@@ -395,6 +415,9 @@ static void close_menu(void)
     U.font = IMG_ROCFONT;
     U.font_space = 0;
     wait_tics(2);
+    /* the menu's sounds play out */
+    for (int t = 0; t < 5000 && (fx_active(U.menu_voc) || fx_active(U.menu_voc2));)
+        t += host_frame();
     win_clear();
 }
 
@@ -460,12 +483,13 @@ static int select_menu(const char *const *menu, int num)
                 }
             }
             if (moved) {
-                /* (the menu's click, _MenuVOC: no sound yet) */
+                menu_click();
                 timecounter = 0;
                 count = 0;
                 moved = false;
             }
             if ((!G.keys[0x1C] && enter_ok) || (!key(K_ATTACK) && attack_ok)) {
+                menu_pick();
                 enter_ok = attack_ok = false;
                 select = y + 1;
                 count = 0x14;
@@ -504,6 +528,121 @@ static int select_menu(const char *const *menu, int num)
                 count += host_frame();
         }
     }
+}
+
+/* The sound menu's sliders: the track (SliderID 0, or 2 off the standard palette) and the knob
+ * (1 or 3) at volume / 4; VOLUMESELECT draws a knob moved up one pixel further right. */
+static void slider(int line, int volume, int nudge)
+{
+    const bool d = default_pal();
+    win_pic(G.img[IMG_SLIDER + (d ? 0 : 2)], 0x79, line ? 0x5D : 0x3D);
+    win_pic(G.img[IMG_SLIDER + (d ? 1 : 3)], volume / 4 + 0x7D + nudge, line ? 0x60 : 0x40);
+}
+
+/* RXWINDF.C:707 VOLUMESELECT: up / down (or S, M) pick the line, left / right move its slider a
+ * step of 16 (the volume changes at once, with the menu's click), Esc or the jump key leaves. */
+static void volume_select(const char *const *menu)
+{
+    int y = U.volume_line;
+    bool right_ok = false, left_ok = false, up_ok = false, down_ok = false, letter_ok = false,
+         moved = false, esc_ok = false, jump_ok = false, f11_ok = false;
+    int flash = 0, timecounter = 0, timecounter2 = 0;
+    for (;;) {
+        if (++flash == 0x10)
+            flash = 0;
+        if (default_pal())
+            font_colors[0] = (uint8_t)(flash < 8 ? flash + 0x40 : 0x4F - flash);
+        else
+            font_colors[5] = (uint8_t)(flash < 8 ? flash + 0x18 : 0x27 - flash);
+        menu_line(menu, y, true);
+        if (++timecounter > 6) {
+            timecounter = 0;
+            up_ok = down_ok = true;
+        }
+        if (++timecounter2 > 2) {
+            timecounter2 = 0;
+            right_ok = left_ok = true;
+        }
+        for (int count = 0; count < 0x14;) {
+            int16_t *vol = y == 0 ? &Sess.sound_volume : &Sess.music_volume;
+            int step = 0;
+            if (key(K_RIGHT) && right_ok) {
+                right_ok = false;
+                step = 0x10;
+            } else if (key(K_LEFT) && left_ok) {
+                left_ok = false;
+                step = -0x10;
+            }
+            if (step) {
+                timecounter2 = 0;
+                *vol = (int16_t)(*vol + step);
+                *vol = (int16_t)(*vol < 0 ? 0 : *vol > 0xFF ? 0xFF : *vol);
+                slider(y, *vol, step > 0);
+                fx_set_volume(Sess.sound_volume);
+                music_set_volume(Sess.music_volume);
+                timecounter2 = 0;
+                menu_click();
+            }
+            if (key(K_UP) && up_ok) {
+                moved = true;
+                up_ok = false;
+            } else if (key(K_DOWN) && down_ok) {
+                moved = true;
+                down_ok = false;
+            } else if ((G.keys[0x1F] && y != 0) || (G.keys[0x32] && y == 0 && letter_ok)) {
+                moved = true;
+                letter_ok = false;
+                y = G.keys[0x1F] ? 2 : 0;
+            }
+            if (moved) {
+                menu_line(menu, y, false);
+                y = y == 0 ? 2 : 0;
+                menu_line(menu, y, true);
+                menu_click();
+                timecounter = 0;
+                count = 0;
+                moved = false;
+            }
+            if ((G.keys[0x01] && esc_ok) || (!key(K_JUMP) && jump_ok)) {
+                U.volume_line = (uint8_t)y;
+                return;
+            }
+            if (G.keys[0x57] && f11_ok) {
+                f11_ok = false;
+                G.gamma = (uint8_t)(G.gamma + 4);
+                if (G.gamma > 0x10)
+                    G.gamma = 0;
+            }
+            if (key(K_JUMP))
+                jump_ok = true;
+            if (!G.keys[0x01])
+                esc_ok = true;
+            if (!key(K_UP))
+                up_ok = true;
+            if (!key(K_DOWN))
+                down_ok = true;
+            if (!key(K_RIGHT))
+                right_ok = true;
+            if (!key(K_LEFT))
+                left_ok = true;
+            if (!G.keys[0x57])
+                f11_ok = true;
+            if (!G.keys[0x1F] && !G.keys[0x32])
+                letter_ok = true;
+            count += host_frame();
+        }
+    }
+}
+
+/* RXWINDF.C:415 SOUNDMENU: the effects' and the music's volume. */
+void sound_menu(void)
+{
+    static const char *const menu[] = {"Sound FX Volume", " ", "Music Volume", " ", NULL};
+    open_menu(menu, 0x28, 0x12, default_pal() ? "{2}SOUND CONTROLS" : "{3}SOUND CONTROLS");
+    slider(0, Sess.sound_volume, 0);
+    slider(2, Sess.music_volume, 0);
+    volume_select(menu);
+    close_menu();
 }
 
 /* RXWINDF.C:150 DIFFICULTYMENU: the episode, then the difficulty (Esc there goes back to the
@@ -609,7 +748,7 @@ static void option_menu(void)
                 }
             }
         } else if (k == 5) {
-            /* SOUNDMENU: the sound isn't ported yet */
+            sound_menu();
         } else if (in_level && sel == 1) {
             status_win(true);
         } else {
@@ -846,6 +985,7 @@ void status_win(bool from_menu)
         snprintf(desc, sizeof desc, "%.30s", (const char *)d + G.level * 30);
     free(d);
     if (!from_menu) {
+        music_pause();
         G.pause_hit = 0;
         G.main_pausing = 1;
     }
@@ -885,6 +1025,7 @@ void status_win(bool from_menu)
     if (!from_menu) {
         G.pause_hit = 0;
         G.main_pausing = 0;
+        music_continue();
         win_down();
     } else {
         win_clear();

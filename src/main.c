@@ -24,8 +24,11 @@
  *                    shields, 0x23 lightning, 0x25 death, 0x29 a stronger weapon)
  *   --sweep          move the player from its start to the map's right edge over the run
  *   --list           print every object at the end
- *   --no-objects     don't draw the objects */
+ *   --no-objects     don't draw the objects
+ * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
+ * --no-music without music. */
 #include "archive.h"
+#include "audio.h"
 #include "engine.h"
 #include "game.h"
 #include "host.h"
@@ -57,7 +60,7 @@ typedef struct {
     const char *hold_names[MAX_HOLDS];
     host_hold_t holds[MAX_HOLDS];
     int hold_count;
-    bool no_objects, sweep, list, female, invincible;
+    bool no_objects, sweep, list, female, invincible, no_sound, no_music;
 } options_t;
 
 static options_t opt;
@@ -137,6 +140,10 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->boss_hits = atoi(argv[++i]);
         else if (!strcmp(a, "--no-objects"))
             o->no_objects = true;
+        else if (!strcmp(a, "--no-sound"))
+            o->no_sound = true;
+        else if (!strcmp(a, "--no-music"))
+            o->no_music = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
             o->data_dir = argv[++i];
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -290,7 +297,7 @@ int main(int argc, char **argv)
                         "[--screenshot out.png --ticks N] [--pos X,Y] [--player X,Y] "
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
-                        "[--list] [--no-objects]\n");
+                        "[--list] [--no-objects] [--no-sound] [--no-music]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
@@ -324,6 +331,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;
     }
+    /* SETUPSOUND: the effects on _SoundVoices voices, the music on the MIDI synthesiser */
+    if (Sess.sound_voices < 1)
+        Sess.sound_voices = 8;
+    audio_init(!headless && !opt.no_sound && Sess.sound_card != -1,
+               !headless && !opt.no_music && Sess.music_card != -1, Sess.sound_voices);
+    sound_init(&arc, Sess.sound_card != -1, Sess.sound_voices);
+    fx_set_volume(Sess.sound_volume);
+    music_set_volume(Sess.music_volume);
     const game_hooks_t hooks = {hook_level_start, hook_frame, hook_new_game};
     int rc = 0;
     if (setjmp(host_end) == 0) {
@@ -336,6 +351,7 @@ int main(int argc, char **argv)
     game_keep_session();
     config_save();
     game_shutdown();
+    audio_shutdown();
     host_shutdown();
     arc_close(&arc);
     return rc;

@@ -98,7 +98,7 @@ build/roc.exe game/ROC.EXE --level 7 --female --invincible --gems 60 --boss-hits
 default): arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs), Space the special
 item (change hero), Enter + up / down (or PgUp / PgDn) look; Esc the main menu, F1 help, F2 / F3
 save / load, F8 / F9 quick save / load, F5 status display on / off, F6 / Tab / Pause the status
-window, F10 quit, F11 gamma (F4, the sound menu, does nothing yet); the cheats: Backspace held,
+window, F4 the sound volumes, F10 quit, F11 gamma; the cheats: Backspace held,
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
 fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
@@ -110,6 +110,11 @@ is when `--ticks` are used up (in a menu, on the title...), and the screenshot i
 last shown. Objects whose behaviour isn't ported stay still, and each such animator is reported
 once on stderr. Headless runs print the level, the player's position and animator, the
 inventory and the level's counters (found / in the level) at the end.
+
+Sound: effects through SDL2 audio, music through the system's MIDI synthesiser (Windows: the
+MIDI mapper, usually the Microsoft GS Wavetable Synth). `--no-sound` and `--no-music` turn them
+off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
+still time every sound, so the game behaves as it does with sound.
 
 ## Completed
 
@@ -382,6 +387,24 @@ inventory and the level's counters (found / in the level) at the end.
   "Level Cleared!", the final results, the Hall of Heroes' name entry (roc.sco written), the
   episode's story and "READY FOR MORE?", and Y starts level 8. Sweeps of all 27 levels with both
   heroes are clean.
+- Port, sound (notes "Sound"): new `src/audio.c` in place of the Apogee Sound System: an SDL2
+  mixer for the effects (FX_PlayVOC, FX_SoundActive, FX_StopSound, FX_SetVolume; VOC files'
+  8-bit PCM at about 11 kHz, linear interpolation, voices stolen oldest first when all are
+  busy), silent and advanced by the game's ticks when there's no device (headless runs), and a
+  MIDI file sequencer on a thread for the music (MUSIC_PlaySong looped, SetVolume through each
+  channel's CC 7, FadeVolume, Pause / Continue) on winmm; new `src/sound.c` (RXSAMPLF.C):
+  rocsound.txt's 183 samples with their chains, PLAYSAMPLE, MAINTAINSOUND, SOUNDLINKACTIVE /
+  KILL, and NEWLEVELSETUP's song from rocsong.txt (the old one fading out over 0xe8 ms). In
+  `src/ui.c` SOUNDMENU / VOLUMESELECT (F4, or the options' "Sound Volume"), the menus' click
+  (sample 3) and pick (0xa9) sounds, which CLOSEMENU lets finish, MAINTAINSOUND in ANIMATECURSOR,
+  the music paused in the pause window; the title's sound (0xb0 or 0xb1) and its music fading
+  over a second on quitting; DOAMBIENTNOISE calls MAINTAINSOUND and needs more than 3 voices.
+  ROC.CFG keeps the cards, voices and volumes. Verified: on forest1 a bat's bats1 -> bats2 ->
+  bats3 -> bats1 loop plays under one handle (1) while birds, landings and hits get their own;
+  a scratch test plays bats1.voc for its 0.89 s on SDL's dummy driver and runs a song (at volume
+  0) through play, fade, pause and stop; all 18 songs parse; the sound menu's sliders move in
+  steps of 16; the game-loop scripts and sweeps of all 27 levels (both heroes) are clean. Not
+  heard by a person yet.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -389,14 +412,11 @@ inventory and the level's counters (found / in the level) at the end.
 
 ## Next steps
 
-1. **Sound** (next): the Apogee Sound System (`SOURCE\*.C`: VOC effects through PLAYSAMPLE /
-   MAINTAINSOUND, MIDI music per level from rocsong.txt), then SOUNDMENU / VOLUMESELECT (the
-   menu items are there and do nothing), the title's and menus' VOCs (`_MenuVOC`), and the sound
-   settings in ROC.CFG (kept as found). Every behaviour already calls `play_sample`.
-2. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
+1. **Background flags** (next): bits 9-14 of background cells (probably collision/animation; see
    `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
    are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
-3. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
+2. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
    `MyBUTTON` keys); the original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
-   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the interactive window wasn't
-   tried by hand this milestone (only headless runs).
+   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); music on systems without winmm
+   (a software synthesiser, or the songs' AdLib sound); the interactive window and the sound
+   haven't been tried by a person yet (only headless runs and scratch tests).

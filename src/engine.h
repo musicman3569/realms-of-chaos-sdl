@@ -220,6 +220,9 @@ typedef struct {
     char blood_pass[20];         /* _BloodPass (ROC.CFG) */
     uint32_t next_score_up, old_next_score_up;
     uint16_t key_trans[8];       /* _KeyTrans (ROC.CFG) */
+    int16_t sound_card, music_card; /* _SoundCardType / _MusicCardType (ROC.CFG; -1 none) */
+    int16_t sound_voices, sound_volume, music_volume; /* _SoundVoices, _SoundVolume (0-255),
+                                  * _MusicVolume (ROC.CFG) */
 } session_t;
 
 extern session_t Sess;
@@ -301,9 +304,16 @@ void enemy_hit(obj_t *o, uint8_t max_hits);         /* ENEMYHIT */
 void spike_check(obj_t *o, uint8_t is_wall);        /* SPIKECHECK */
 void maintain_block(obj_t *o);                      /* MAINTAINBLOCK: solid objects push the player */
 
-/* Not ported yet: sound. */
-int play_sample(uint8_t n, obj_t *o);               /* PLAYSAMPLE: returns a handle, 0 */
-bool sound_link_active(int16_t handle);
-void sound_link_kill(int16_t handle);
+/* Sound (sound.c, RXSAMPLF.C). */
+void sound_init(const archive_t *arc, bool on, int voices); /* rocsound.txt, rocsong.txt */
+int sound_voices(void);                             /* _SoundVoices */
+int play_sample(uint8_t n, obj_t *o);               /* PLAYSAMPLE: a handle, or < 0 */
+bool sound_link_active(int16_t handle);             /* SOUNDLINKACTIVE */
+void sound_link_kill(int16_t handle);               /* SOUNDLINKKILL */
+void maintain_sound(void);                          /* MAINTAINSOUND */
+void sound_forget_obj(const obj_t *o);              /* an object is freed */
+void sound_level_end(void);                         /* a level's sounds don't go on */
+int sound_fx(uint8_t n);                            /* the menus' sounds: a voice handle */
+void sound_song(int level);                         /* NEWLEVELSETUP's music */
 
 #endif

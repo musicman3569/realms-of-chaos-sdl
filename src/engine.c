@@ -593,6 +593,7 @@ static void free_dead(void)
     while (G.dead) {
         obj_t *o = G.dead;
         G.dead = o->free_next;
+        sound_forget_obj(o);
         free(o);
     }
 }
@@ -776,6 +777,9 @@ session_t Sess = {
     .diff_mode = 2, .game_flags = 4, .status_on = 1, .message_on = 1, .blood_on = 1,
     .next_score_up = 10000, .old_next_score_up = 10000,
     .key_trans = {0x4B, 0x4D, 0x48, 0x50, 0x1D, 0x38, 0x39, 0x1C},
+    /* (with no ROC.CFG, the port's: sound and music on, 8 voices, full volume) */
+    .sound_card = 0, .music_card = 0, .sound_voices = 8, .sound_volume = 255,
+    .music_volume = 255,
 };
 
 bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
@@ -973,6 +977,7 @@ const sprite_t *game_image(int index)
 
 void game_clear_objects(void)
 {
+    sound_level_end();
     free_dead();
     for (int id = 0; id < LIST_COUNT; id++) {
         while (G.list[id]) {
@@ -1006,26 +1011,3 @@ void game_end(void)
         spriteset_free(&G.sets[i]);
     memset(&G, 0, sizeof G);
 }
-
-/* ------------------------------------------------------------------------------------------ */
-/* Not ported yet                                                                              */
-
-int play_sample(uint8_t n, obj_t *o)
-{
-    (void)n;
-    (void)o;
-    return 0;
-}
-
-bool sound_link_active(int16_t handle)
-{
-    (void)handle;
-    return false;
-}
-
-void sound_link_kill(int16_t handle)
-{
-    (void)handle;
-}
-
-

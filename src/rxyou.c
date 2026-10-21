@@ -1516,12 +1516,14 @@ int do_blood(obj_t *o)
 }
 
 /* RXYOU.C:471 DOAMBIENTNOISE / RXYOUF.C:1589 FDOAMBIENTNOISE: the level's background sound
- * (type 0x5c, OF_RATE, xSpeed 0x2000): when the last one has finished (and the sound card has
- * more than 3 voices), play the level's again: birds in the forest, wind, water, the swamp...
- * The sound is a stub, so for now this only picks the sample. */
+ * (type 0x5c, OF_RATE, xSpeed 0x2000): MAINTAINSOUND (the sounds' chains go on), then when the
+ * last one has finished (and the sound card has more than 3 voices), play the level's again:
+ * birds in the forest, wind, water, the swamp... */
 int do_ambient_noise(obj_t *o)
 {
-    /* (MAINTAINSOUND first, and nothing at all with _SoundVoices <= 3.) */
+    maintain_sound();
+    if (sound_voices() <= 3)
+        return 0;
     if (o->gv[0] != 0 && !sound_link_active(o->gv[0]))
         o->gv[0] = 0;
     if (o->gv[0] != 0)

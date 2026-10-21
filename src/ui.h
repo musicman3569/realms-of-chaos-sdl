@@ -16,7 +16,7 @@ enum {
     MENU_NONE = -1,
     MENU_MAIN = 0,         /* Esc: MAINMENU */
     MENU_SAVE = 4,         /* F2: SAVEMENU */
-    MENU_SOUND = 5,        /* F4: SOUNDMENU (not ported: there's no sound yet) */
+    MENU_SOUND = 5,        /* F4: SOUNDMENU */
     MENU_LOAD = 6,         /* F3: LOADMENU */
     MENU_QUICKSAVE = 8,    /* F8: QUICKMENU(1) */
     MENU_QUICKLOAD = 9,    /* F9: QUICKMENU(0) */
@@ -35,6 +35,7 @@ void gamma_key(uint8_t *armed);
 bool default_pal(void);
 
 void main_menu(void);                               /* MAINMENU */
+void sound_menu(void);                              /* SOUNDMENU */
 void save_menu(void);                               /* SAVEMENU */
 void load_menu(void);                               /* LOADMENU */
 void quick_menu(int saving);                        /* QUICKMENU: 1 save, 0 load, 2 a death */

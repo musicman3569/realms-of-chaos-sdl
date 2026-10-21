@@ -2,6 +2,7 @@
  * run. */
 #include "host.h"
 
+#include "audio.h"
 #include "engine.h"
 #include "png.h"
 
@@ -253,6 +254,7 @@ static int headless_frame(void)
             H.keys[h->scancode] = 1;
     }
     H.ticks += step;
+    audio_advance((int)step);
     sync_keys();
     return (int)step;
 }
@@ -302,6 +304,7 @@ int host_frame(void)
     if (ticks > MAX_STEP)
         ticks = MAX_STEP;
     H.ticks += ticks;
+    audio_advance(ticks); /* (only when there's no sound device) */
     sync_keys();
     return ticks;
 }

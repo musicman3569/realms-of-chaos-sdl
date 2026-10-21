@@ -497,6 +497,46 @@ y 0xc6 to 0xa1 at the view's left (a pixel every 4 ticks), stays 0x579 ticks and
 also clears a leftover "hint up" bit at a level's start, which the original keeps (and which would
 stop the hints).
 
+## Sound
+
+The Apogee Sound System (`SOURCE\*.C`: FX_MAN, MULTIVOC, BLASTER, GUSWAVE, AL_MIDI, ...) plays
+effects on `_SoundCardType` (-1 none; FX_SetVolume is the card's mixer: 0 Sound Blaster, 1 Pro
+Audio Spectrum, 5 UltraSound) with `_SoundVoices` voices, and MIDI music on `_MusicCardType`.
+SETUPSOUND (RXSAMPLF.C:236) starts both from ROC.CFG.
+
+**Samples** (LOADITEMS, RXITEMSF.C): rocsound.txt is 16-byte records, a VOC file's name, its
+number (byte 14; ITEMstruct.Ident) and the number of the sample to play after it (byte 15,
+`Link`): bats1 -> bats2 -> bats3 -> bats1, the bubbles, the castle's screams... All 185 VOCs are
+one type-1 block of 8-bit unsigned PCM, rate byte 164 or 165 (10870 / 10989 Hz).
+
+**PLAYSAMPLE(n, source)** (RXSAMPLF.C:135): -3 without a sound card; reads the sample in if it
+isn't (freeing lower-numbered unlocked ones if memory is short), adds a SOUNDstruct to
+`_SoundListHead` (ADDPLINKNODE by the sample's number) with its source object and the handle
+`_NextSoundListHandle` (1..0x7fbc), and plays it: `FX_PlayVOC(data, _SoundVolume, 7, n)`. The
+handle is what objects keep (often in a GenericVar) for SOUNDLINKACTIVE (still in the list) and
+SOUNDLINKKILL (stopped and dropped). **MAINTAINSOUND** (:64) drops the sounds that have ended (8
+at most a call) and replays each one's `Link` sample under the same handle when its source is
+none, in the foreground list or visible, so a chain stays "active" until it ends or its object
+goes out of view. Only FDOAMBIENTNOISE (the level's ambient object, which also needs more than 3
+voices) and ANIMATECURSOR call it.
+
+**Music**: NEWLEVELSETUP fades the song out (MUSIC_FadeVolume(0, 0xe8)), stops it, reads the
+level's (rocsong.txt: 13-character names, 29 levels) and plays it looped at `_MusicVolume`.
+STATUSWIN pauses it; the title fades it over 1000 ms when quitting. **Menus**: OPENMENU loads
+`_MenuVOC` (sample 3, played when a line moves) and `_MenuVOC2` (0xa9, a line picked), CLOSEMENU
+waits for both to finish; the title plays 0xb0 or 0xb1 once. SOUNDMENU (RXWINDF.C:415) shows two
+sliders (SliderID: the track at window (0x79, 0x3d / 0x5d), the knob at x volume / 4 + 0x7d,
+y 0x40 / 0x60); VOLUMESELECT moves the line with up / down or S / M, a slider with left / right in
+steps of 16 (with the click; the knob drawn after a step up sits a pixel further right) and ends on
+Esc or the jump key.
+
+**The port** (`src/audio.c`, `src/sound.c`): effects are mixed with SDL2 (44.1 kHz, linear
+interpolation; with no free voice the oldest of the lowest priority is taken, and all play at
+priority 7); without a device the mixer is advanced by the game's ticks, so sounds last as long
+and the behaviours waiting on them behave the same headless. Music is a MIDI file sequencer on
+its own thread sending to winmm's MIDI mapper; the volume scales each channel's CC 7. A freed
+object's sounds play out without going on (the original would read the freed object).
+
 ## The game loop
 
 **Timers** (TIMER.C and the timer task at 1000:c5d3, 582 Hz): each run adds `_TicAmt` (1, or 0

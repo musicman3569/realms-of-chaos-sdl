@@ -80,19 +80,26 @@ bool config_load(void)
     memcpy(Sess.blood_pass, cfg + 48, 20);
     Sess.blood_pass[19] = 0;
     Sess.gamma = cfg[68] <= 0x10 ? cfg[68] : 0;
+    Sess.sound_card = (int16_t)rd16(cfg + 32);
+    Sess.sound_voices = (int16_t)rd16(cfg + 34);
+    Sess.sound_volume = (int16_t)rd16(cfg + 36);
+    Sess.music_card = (int16_t)rd16(cfg + 38);
+    Sess.music_volume = (int16_t)rd16(cfg + 42);
     return true;
 }
 
 void config_save(void)
 {
     if (!cfg_read) {
-        /* SETUP's defaults for what the port doesn't set: no joystick, no sound */
+        /* what the port doesn't set: no joystick, the MIDI port at 330h */
         memset(cfg, 0, sizeof cfg);
-        wr16(cfg + 32, 0xFFFF);
-        wr16(cfg + 38, 0xFFFF);
-        wr16(cfg + 36, 0xFF);
-        wr16(cfg + 42, 0xFF);
+        wr16(cfg + 40, 0x330);
     }
+    wr16(cfg + 32, (uint16_t)Sess.sound_card);
+    wr16(cfg + 34, (uint16_t)Sess.sound_voices);
+    wr16(cfg + 36, (uint16_t)Sess.sound_volume);
+    wr16(cfg + 38, (uint16_t)Sess.music_card);
+    wr16(cfg + 42, (uint16_t)Sess.music_volume);
     for (int i = 0; i < 8; i++)
         wr16(cfg + i * 2, Sess.key_trans[i]);
     cfg[44] = Sess.status_on;

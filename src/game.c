@@ -3,6 +3,7 @@
  * (RXTITLE.C). See game.h. */
 #include "game.h"
 
+#include "audio.h"
 #include "host.h"
 #include "save.h"
 #include "ui.h"
@@ -176,7 +177,7 @@ static void open_menu_coming(void)
     case MENU_QUICKSAVE: quick_menu(1); break;
     case MENU_QUICKLOAD: quick_menu(0); break;
     case MENU_STATUS: status_win(false); break;
-    case MENU_SOUND: break; /* (SOUNDMENU: no sound yet) */
+    case MENU_SOUND: sound_menu(); break;
     case MENU_QUIT:
         if (prompt_win(PROMPT_QUIT, NULL))
             G.quitflag = 1;
@@ -422,11 +423,12 @@ static int process_title(void)
         G.hitagain = 1;
         if (!L.title_voc_done) {
             L.title_voc_done = 1;
-            frandom(2); /* (picks one of the two title sounds: no sound yet) */
+            sound_fx((uint8_t)(0xB0 + frandom(2))); /* (_MenuVOC: one of the two) */
         }
         return 0;
     }
     if (G.quitflag != 0 && G.quitflag != 5) {
+        music_fade(0, 1000);
         L.quit_game = 1;
         return 1;
     }
@@ -440,7 +442,7 @@ static int process_title(void)
         } else if (G.keys[0x3D]) {
             load_menu();
         } else if (G.keys[0x3E]) {
-            /* (SOUNDMENU) */
+            sound_menu();
         } else if (G.keys[0x43]) {
             quick_menu(0);
         } else if (G.keys[0x44] && prompt_win(PROMPT_QUIT, NULL)) {
@@ -596,6 +598,7 @@ static int new_level_setup(void)
     }
     const int level = L.next_level < LEVEL_COUNT ? L.next_level : LEVEL_TITLE;
     L.next_level = (uint8_t)level;
+    sound_song(level);
     if (level < LEVEL_TITLE)
         loading_screen();
     if (!load_level(level))
