@@ -872,6 +872,11 @@ void setup_obj(obj_t *o, uint8_t type)
         o->counter = 0;
         o->xspeed = 0x1770;
         break;
+    case 0x5A: /* a reflection in the swamp's water (PARENTLISTADD) */
+        o->animator = A_DOREFLECTION;
+        o->priority = G.parent_priority;
+        o->flags |= OF_PLACED;
+        break;
     case 0x5B: /* the raft's front piece */
         o->animator = A_NULLANIMATOR;
         o->priority = 0x18;
@@ -1058,4 +1063,5 @@ void init_obj(const sprite_t *image, uint16_t x, uint16_t y, const char *info)
     obj_link(o, list);
     if (list == LIST_FORE || list == LIST_SLOW)
         o->update = 0x1000;
+    reflection_check(o); /* (INITOBJ doesn't look at the list) */
 }

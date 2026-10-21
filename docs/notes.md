@@ -408,6 +408,31 @@ left corner; it blinks on the last hit point and while poisoned, and poison cost
 at each of the player's blinks. Four DOGEMNUMBER digits (GemNumID) and a spinning gem show
 the gem count.
 
+## Reflections, looking and the fly mode
+
+**Reflections** (levels 8 and 9). SPAWNOBJ (main list only) and INITOBJ call PARENTLISTADD
+(RXSWAMPF.C:11) for frogs (priority 0x35), statues (2), 0x34, prizes (0xe5), 0xdc, 0x36 and the
+player: a type 0x5a object (DOREFLECTION, RXSWAMP.C:44, at the parent's priority through
+`_ParentPriority`) recorded with its parent in `_ParentListHead` (PARENTstruct: link, parent,
+child). Each run it takes the parent's x and facing, y = 2 * Rows * 16 - 0x4d - the parent's bottom
+(kept within the map's last 0x26 pixels: the water), its blinking, and, through `_ReflecTable`
+(DS:0d13: 14 pairs of an `_Img` set and its upside-down U_ twin, with frame counts; a 15th,
+BothDeadID, isn't looked at), the upside-down frame of the parent's image. OBJKILL calls
+PARENTLISTKILL, which gives the parent's reflections OFFKILLER. The port keeps the parent in the
+reflection's `parent` field and finds the reflections by it.
+
+**Looking** (PROCESSLEVEL, once a frame). While the player runs, crouches or climbs (not on levels
+7, 10, 16, 25, nor while `_CenterOff` is negative), Enter with up, or PgUp, starts looking up: a
+0x8c-high dead zone and `_CenterOff` 0, then the view moves up a pixel a frame while the player's
+bottom stays above view y 0xa9; Enter with down, or PgDn, moves it down while the player stays
+below view y 0x1e and the map goes on. Letting go sets `_CenterOff` back (86, 102 crouching), and
+SCREENCENTER brings the view back. `_Looking` (1 up, -1 down) keeps the player's own up / down
+from acting meanwhile.
+
+**The fly mode** (XLEVEL, RXGENERL.C:401): holding D, CapsLock and X makes it the player's
+Animator. It sets `_YouInvincible` and moves the player a pixel a tick with the arrows (PLAYERUP...,
+so the view follows), through walls, within the map; the jump key lands them (YOUBEGINRUN).
+
 ## Bolo cats and the snake platform
 
 **Bolo cats** (RXFRSTF.C; types 0x27 cat, 0x28 bolo). GRABSTUFF's bonus tile type 0x68 (levels 1, 2

@@ -761,3 +761,47 @@ int dragon_head_die(obj_t *o)
     play_sample(0x74, o);
     return 0;
 }
+
+/* _ReflecTable (DS:0d13): the sprite sets that have an upside-down twin for the water, frame by
+ * frame (its 15th entry, BothDeadID, is past the end DOREFLECTION looks at). */
+static const struct {
+    int parent, child, frames;
+} reflectable[14] = {
+    {IMG_COLLECT, IMG_U_COLLEC, 43}, {IMG_FIREBALL, IMG_U_FIREBA, 9}, {IMG_FROG, IMG_U_FROG, 3},
+    {IMG_MOSQUITO, IMG_U_MOSQUI, 5}, {IMG_MUDMAN, IMG_U_MUDMAN, 4}, {IMG_STATUE, IMG_U_STATUE, 2},
+    {IMG_MALATTAC, IMG_U_MALATT, 4}, {IMG_MALDUCK, IMG_U_MALDUC, 5}, {IMG_MALJUMP, IMG_U_MALJUM, 5},
+    {IMG_MALWALK, IMG_U_MALWAL, 30}, {IMG_FEMATTAC, IMG_U_FEMATT, 8}, {IMG_FEMDUCK, IMG_U_FEMDUC, 4},
+    {IMG_FEMJUMP, IMG_U_FEMJUM, 4}, {IMG_FEMWALK, IMG_U_FEMWAL, 30},
+};
+
+/* RXSWAMP.C:44 DOREFLECTION (type 0x5a, levels 8 and 9): an object's reflection in the swamp's
+ * water. It mirrors its parent's place about the water line (y = 2 * Rows * 16 - 0x4d - the
+ * parent's bottom, kept within the map's last 0x26 pixels), facing and blinking, and shows the
+ * upside-down frame of the parent's image if it has one (else it keeps the last). */
+int do_reflection(obj_t *o)
+{
+    const obj_t *p = o->parent;
+    if (!p || p->dead)
+        return 0;
+    const uint16_t bottom = (uint16_t)(G.lv->rows * 16);
+    o->x = p->x;
+    o->y = (uint16_t)(bottom + (bottom - 0x4D - (p->y + p->ysize)));
+    o->xdir = p->xdir;
+    if (bottom < o->y)
+        o->y = bottom;
+    else if (o->y < (uint16_t)(bottom - 0x26))
+        o->y = (uint16_t)(bottom - 0x26);
+    bool found = false;
+    for (int t = 0; t < 14 && !found; t++)
+        for (int f = 0; f < reflectable[t].frames && !found; f++)
+            if (p->image && p->image == G.img[reflectable[t].parent + f]) {
+                obj_image(o, G.img[reflectable[t].child + f]);
+                found = true;
+            }
+    if (p->blinks != 0) {
+        o->blink_color = p->blink_color;
+        obj_blink(o, p->blink_ct, p->draw_on, p->draw_off);
+        o->blinks = p->blinks;
+    }
+    return 0;
+}

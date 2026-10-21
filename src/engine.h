@@ -85,7 +85,7 @@ enum {
     A_CRUMBLEPLATFALL = 0x8bd7, A_DOPULLEY = 0x8d31, A_PULLYPLATWAIT = 0x8de5,
     A_PULLYPLATMOVE = 0x8e2b, A_PULLYPLATRETURN = 0x8fbc, A_PULLYPLATDIP = 0x9144,
     A_DOSQUAREPLAT = 0x9207, A_DOFALLINGPLAT = 0x938c, A_BRIKSHAKE = 0x9659,
-    A_SWAMPRAFT = 0x9744, A_DOSNAKEPLAT = 0x9fd1, A_BOULDERSPAWNER = 0xa3dc, A_ROLLINGBOULDER = 0xa63a, A_STILLBOULDER = 0xaa0e, A_MUDMANWALK = 0xafca,
+    A_SWAMPRAFT = 0x9744, A_DOREFLECTION = 0xae8b, A_DOSNAKEPLAT = 0x9fd1, A_BOULDERSPAWNER = 0xa3dc, A_ROLLINGBOULDER = 0xa63a, A_STILLBOULDER = 0xaa0e, A_MUDMANWALK = 0xafca,
     A_DOMOSQUITO = 0xafd9, A_DOFROG = 0xafe8, A_FROGLAUNCH = 0xaff7,
     A_FROGLAND = 0xb006, A_DRAGONCENTER = 0xb0df, A_DODRAGONBOB = 0xb0ee,
     A_DODRAGONSPIT = 0xb0fd, A_DODRAGONFIRE = 0xb10c, A_DODRAGONBOOM = 0xb11b,
@@ -128,7 +128,8 @@ struct obj {
     uint8_t surface_flags;
     /* port */
     obj_t *child;                /* SWAMPRAFT's front piece (a near pointer in GenericVar[0]) */
-    obj_t *parent;               /* a wisp's light: the wisp (a near pointer in GenericVar[0]) */
+    obj_t *parent;               /* a wisp's light: the wisp; a reflection: what it reflects
+                                  * (near pointers in GenericVar[0]) */
     bool dead;                   /* unlinked by OBJKILL, freed after the frame */
     obj_t *free_next;
 };
@@ -210,6 +211,7 @@ void game_draw(surface_t *s);
 uint16_t frandom(uint16_t n);                       /* FRANDOM: rand() * n / 0x8000 */
 obj_t *spawn_obj(uint8_t type, int list, const sprite_t *image, uint16_t x, uint16_t y);
 void obj_kill(obj_t *o);                            /* OBJKILL */
+void reflection_check(obj_t *o);                    /* the swamp: PARENTLISTADD if it reflects */
 void obj_link(obj_t *o, int list);                  /* ADDPLINKNODE: insert by priority */
 void obj_image(obj_t *o, const sprite_t *image);    /* OBJIMAGE / FOBJIMAGE */
 void next_frame(obj_t *o, int img_base);            /* NEXTFRAME(objp, &_Img.xxxID) */

@@ -87,10 +87,44 @@ static bool unlink_from(obj_t *o, int id)
     return false;
 }
 
+/* Levels 8 and 9 (the swamp): what shows a reflection in the water: priorities 0x35 (frogs),
+ * 2 (statues), 0x34, 0xe5 (prizes), 0xdc, 0x36, and the player. */
+static bool reflects(const obj_t *o)
+{
+    const int16_t pr = o->priority;
+    return (G.level == 8 || G.level == 9) &&
+           (pr == 0x35 || pr == 2 || pr == 0x34 || pr == 0xE5 || pr == 0xDC || pr == 0x36 ||
+            o == G.you);
+}
+
+/* PARENTLISTADD (RXSWAMPF.C:11), as SPAWNOBJ and INITOBJ call it: a reflection (type 0x5a,
+ * DOREFLECTION, at the parent's priority) mirrored in the water. The original keeps the pairs
+ * in _ParentListHead; the port keeps the parent in the reflection. */
+void reflection_check(obj_t *o)
+{
+    if (!reflects(o) || o->animator == A_DOREFLECTION)
+        return;
+    G.parent_priority = o->priority;
+    const uint16_t bottom = (uint16_t)(G.lv->rows * 16);
+    obj_t *r = spawn_obj(0x5A, LIST_MAIN, NULL, o->x,
+                         (uint16_t)(bottom + (bottom - 0x4D - (o->y + o->ysize))));
+    r->parent = o;
+}
+
 void obj_kill(obj_t *o)
 {
     if (o->dead)
         return;
+    if (o->list == LIST_MAIN && reflects(o)) {
+        /* PARENTLISTKILL: its reflections go too */
+        static const int lists[2] = {LIST_MAIN, LIST_OFF};
+        for (int i = 0; i < 2; i++)
+            for (obj_t *p = G.list[lists[i]]; p; p = p->next)
+                if (p->parent == o && p->animator == A_DOREFLECTION) {
+                    p->animator = A_OFFKILLER;
+                    p->parent = NULL;
+                }
+    }
     /* OBJKILL unlinks it from its home list (an object parked in the off-screen list would
      * stay linked there in the original; the port looks in both). The memory is freed after
      * the frame, so a list walk holding a pointer to it stays valid. */
@@ -170,8 +204,8 @@ obj_t *spawn_obj(uint8_t type, int list, const sprite_t *image, uint16_t x, uint
     obj_link(o, list);
     if (list == LIST_FORE || list == LIST_SLOW)
         o->update = 0x1000;
-    /* Levels 8 and 9 (the swamp) also keep "parent" lists for objects that ride rafts
-     * (PARENTLISTADD); not ported yet. */
+    else
+        reflection_check(o);
     return o;
 }
 

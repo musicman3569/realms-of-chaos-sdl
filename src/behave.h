@@ -34,6 +34,7 @@ bool room_right(const obj_t *o);
 int null_animator(obj_t *o);
 int do_arrow_sign(obj_t *o);
 int do_lightning(obj_t *o);
+int xlevel(obj_t *o);
 int generic_begin_fall(obj_t *o);
 int generic_fall(obj_t *o);
 int generic_begin_jump(obj_t *o);
@@ -139,6 +140,7 @@ int do_rock_monster(obj_t *o);
 void rock_monster_fall(obj_t *o);
 
 /* rxswamp.c */
+int do_reflection(obj_t *o);
 int mud_man_walk(obj_t *o);
 int do_mosquito(obj_t *o);
 int do_frog(obj_t *o);

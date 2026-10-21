@@ -1025,3 +1025,24 @@ int do_lightning(obj_t *o)
         obj_kill(o);
     return 0;
 }
+
+/* RXGENERL.C:401 XLEVEL: the cheat fly mode (D + CapsLock + X; PROCESSLEVEL gives the player
+ * this animator): the player can't be hurt and moves a pixel a tick with the arrows, through
+ * anything, within the map; the jump key lands them (YOUBEGINRUN). */
+int xlevel(obj_t *o)
+{
+    G.you_invincible = 1;
+    if (key(K_UP) && o->y > 0x10)
+        player_up(1, o);
+    if (key(K_DOWN) && o->y < (uint16_t)(G.lv->rows * 16 - o->ysize - 2))
+        player_down(1, o);
+    if (key(K_LEFT) && o->x > 0x10)
+        player_left(1, o);
+    if (key(K_RIGHT) && o->x < (uint16_t)(G.lv->cols * 16 - o->xsize - 2))
+        player_right(1, o);
+    if (key(K_JUMP)) {
+        o->animator = A_YOUBEGINRUN;
+        G.you_invincible = 0;
+    }
+    return 0;
+}

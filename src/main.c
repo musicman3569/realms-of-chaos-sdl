@@ -14,8 +14,8 @@
  * With --screenshot it runs --ticks timer ticks (default 0) without a window and saves the
  * view. --pos fixes the camera there; --player moves the player (hotspot, map pixels) before
  * the run; --hold presses action keys (left, right, up, down, jump, attack, item, look) for a
- * range of ticks, e.g. "right:0-600,jump:200-260"; --trace N prints the player's state every N
- * ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
+ * range of ticks, e.g. "right:0-600,jump:200-260", or a PC scancode ("0x20:0-10" holds D);
+ * --trace N prints the player's state every N ticks (a multiple of 8); --female plays the female character (fireballs), --gems N
  * starts with N gems; --boss-hits N starts the level's boss with N hits taken (GenericVar[3]);
  * --invincible sets _YouInvincible (nothing hurts the player); --difficulty N sets _DiffMode
  * (0-4, default 2); --collect K hands the player prize K (CollectID[K], as DOFLYINGSHIT counts
@@ -35,6 +35,7 @@
 #include <string.h>
 
 enum { VIEW_W = 320, VIEW_H = 200, SCALE = 3, MAX_HOLDS = 32 };
+enum { HOLD_SCANCODE = 0x100 }; /* a hold_t action from here on is a raw PC scancode */
 
 typedef struct {
     int action;
@@ -69,13 +70,19 @@ static bool parse_holds(const char *s, options_t *o)
         char name[16];
         long from, to;
         int used;
-        if (sscanf(s, "%15[a-z]:%ld-%ld%n", name, &from, &to, &used) != 3 ||
+        if (sscanf(s, "%15[a-z0-9]:%ld-%ld%n", name, &from, &to, &used) != 3 ||
             o->hold_count == MAX_HOLDS)
             return false;
         int action = -1;
         for (int i = 0; i < 8; i++)
             if (!strcmp(name, action_names[i]))
                 action = i;
+        if (action < 0 && name[0] == '0' && name[1] == 'x') {
+            /* a raw PC scancode, e.g. 0x20 for D */
+            const long code = strtol(name, NULL, 16);
+            if (code > 0 && code < 0x80)
+                action = HOLD_SCANCODE + (int)code;
+        }
         if (action < 0)
             return false;
         o->holds[o->hold_count++] = (hold_t){action, from, to};
@@ -236,13 +243,62 @@ static bool start_level(level_t *lv, const archive_t *arc, const level_list_t *l
     return true;
 }
 
+/* PROCESSLEVEL's looking (once a frame): while the player runs, crouches or climbs (not on the
+ * boss levels 7, 10, 16 and 25, nor while a camera has let go, _CenterOff < 0), Enter with up
+ * (or PgUp) moves the view up a pixel a frame, as long as the player stays above view y 0xa9, and
+ * Enter with down (or PgDn) moves it down while the player stays below view y 0x1e. Starting to
+ * look makes the dead zone 0x8c high and lets the camera go (_CenterOff 0); letting go gives
+ * SCREENCENTER its usual _CenterOff back (86, or 102 crouching), and it brings the view back. */
+static void process_look(void)
+{
+    obj_t *you = G.you;
+    const uint16_t a = you ? you->animator : 0;
+    if (G.center_off < 0 || !(a == A_YOURUN || a == A_YOUCROUCH || a == A_YOUCLIMB) ||
+        G.level == 7 || G.level == 10 || G.level == 0x10 || G.level == 0x19) {
+        G.looking = 0;
+        return;
+    }
+    const bool look = G.keys[G.key_trans[K_LOOK] & 0x7F] != 0;
+    const bool up = key(K_UP), down = key(K_DOWN);
+    const bool pgup = G.keys[0x49] != 0, pgdn = G.keys[0x51] != 0;
+    for (int dir = 1; dir >= -1; dir -= 2) {
+        const bool held = dir == 1 ? (look && up && !down) || (pgup && !pgdn)
+                                   : (look && down && !up) || (pgdn && !pgup);
+        if (!held) {
+            if (G.looking == dir) {
+                G.looking = 0;
+                if (a == A_YOURUN || a == A_YOUCLIMB)
+                    G.center_off = 'V';
+                else if (a == A_YOUCROUCH)
+                    G.center_off = 'f';
+            }
+        } else if (G.looking == dir) {
+            if (dir == 1 && G.org_y != 0 &&
+                (uint16_t)(you->y + you->ysize) < (uint16_t)(G.org_y + 0xA9))
+                scroll_up(1);
+            else if (dir == -1 && (uint16_t)(G.org_y + 199) < (uint16_t)(G.lv->rows * 16) &&
+                     (uint16_t)(G.org_y + 0x1E) < you->y)
+                scroll_down(1);
+        } else {
+            G.looking = (int8_t)dir;
+            set_scroll_bounds(0x8C, G.window_xsize);
+            G.window_ysize = 0x8C;
+            G.center_off = 0;
+        }
+    }
+}
+
 /* PROCESSLEVEL's _quitflag cases: 3 the exit (on to the next level, with at least 4 / 6 hit
  * points and the poison cured), 4 dead (100 frames later the level starts again with the
- * inventory it started with), 6 warped (the view follows). The story screens, the menu and
- * saving aren't ported. Returns true if it started a level. */
+ * inventory it started with), 6 warped (the view follows). Before them, once a frame, the
+ * look keys and the fly-mode cheat (D + CapsLock + X: XLEVEL). The story screens, the menu, the
+ * other cheats and saving aren't ported. Returns true if it started a level. */
 static bool process_level(level_t *lv, const archive_t *arc, const level_list_t *list,
                           int *dead_frames, char *err, size_t errlen)
 {
+    process_look();
+    if (G.keys[0x20] && G.keys[0x3A] && G.keys[0x2D] && G.you)
+        G.you->animator = A_XLEVEL;
     switch (G.quitflag) {
     case 3: {
         if (G.diff_mode == 0) {
@@ -328,8 +384,14 @@ static int run_headless(const options_t *opt, level_t *lv, const archive_t *arc,
         for (int a = 0; a < 8; a++)
             G.keys[G.key_trans[a] & 0x7F] = 0;
         for (int i = 0; i < opt->hold_count; i++)
-            if (t >= opt->holds[i].from && t < opt->holds[i].to)
-                G.keys[G.key_trans[opt->holds[i].action] & 0x7F] = 1;
+            if (opt->holds[i].action >= HOLD_SCANCODE)
+                G.keys[opt->holds[i].action - HOLD_SCANCODE] = 0;
+        for (int i = 0; i < opt->hold_count; i++) {
+            if (t < opt->holds[i].from || t >= opt->holds[i].to)
+                continue;
+            const int a = opt->holds[i].action;
+            G.keys[a >= HOLD_SCANCODE ? a - HOLD_SCANCODE : G.key_trans[a] & 0x7F] = 1;
+        }
         if (opt->sweep && G.you) {
             G.you->x = (uint16_t)(start_x + (lv->cols * TILE - start_x) * t / opt->ticks);
             cam_x = G.you->x - VIEW_W / 2;
