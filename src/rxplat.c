@@ -799,3 +799,104 @@ int frog_plat(obj_t *o)
     maintain_platform(o);
     return 0;
 }
+
+/* RXPLAT.C:1354 SPINNINGPLATFORM: the goblin boss's platform (type 0x4f, BossPlatID, priority
+ * 0x46): solid and rideable, it shuttles sideways a pixel every 7 ticks (rate 9000) between the
+ * room's wall and the view's edge (Flags bit 0: right). After passing its wall-side end three
+ * times (x 0x40, or x + width 0x1cd) it stops (NOSPINPLAT). When the boss dies it falls
+ * (SPINPLATDIE). */
+int spinning_platform(obj_t *o)
+{
+    const obj_t *b = G.boss;
+    o->gv[5] &= 0x60;
+    if (b->animator == A_BOSSHEADDIE) {
+        o->yspeed = 0;
+        o->animator = A_SPINPLATDIE;
+        return 0;
+    }
+    if (carry(&o->xpart, 9000)) {
+        const bool right_side = b->gv[0] != 0;
+        if (!(o->flags & 1)) {
+            if ((!right_side || o->x <= G.org_x) && (right_side || !can_go_left(o))) {
+                o->flags |= 1;
+            } else {
+                if (!right_side && o->x == 0x40 && ++o->gv[0] == 3) {
+                    o->animator = A_NOSPINPLAT;
+                    return 0;
+                }
+                o->gv[5] |= 4;
+            }
+        } else if ((!right_side || !can_go_right(o)) &&
+                   (right_side || (uint16_t)(G.org_x + 0x136) <= (uint16_t)(o->x + o->xsize))) {
+            o->flags &= 0xFFFE;
+        } else {
+            if (right_side && (uint16_t)(o->x + o->xsize) == 0x1CD && ++o->gv[0] == 3) {
+                o->animator = A_NOSPINPLAT;
+                return 0;
+            }
+            o->gv[5] |= 8;
+        }
+    }
+    maintain_platform(o);
+    if (!(o->gv[5] & 0x20) && obj_overlap(G.you, o))
+        maintain_block(o);
+    return 0;
+}
+
+/* RXPLAT.C:1405 NOSPINPLAT: a boss platform at rest. The top one (y 0xb4) sends the floating
+ * head home (BOSSHEADRETURN) when it passes x 400 or 0x54. */
+int no_spin_plat(obj_t *o)
+{
+    obj_t *b = G.boss;
+    o->gv[5] &= 0x60;
+    if (b->animator == A_BOSSHEADDIE) {
+        o->yspeed = 0;
+        o->animator = A_SPINPLATDIE;
+        return 0;
+    }
+    if (o->y == 0xB4 && b->animator == A_BOSSHEADFLOAT && (b->x == 400 || b->x == 0x54)) {
+        b->counter = 0;
+        b->animator = A_BOSSHEADRETURN;
+        b->xdir = b->gv[0] == 0;
+    }
+    maintain_platform(o);
+    if (!(o->gv[5] & 0x20) && obj_overlap(G.you, o))
+        maintain_block(o);
+    return 0;
+}
+
+/* RXPLAT.C:1430 SPINPLATDIE: the platform falls (gravity 0x5a, to 30000) and shatters on the
+ * floor into seven rocks (type 0, RockPiecID[0..1]), dropping a rider. */
+int spin_plat_die(obj_t *o)
+{
+    o->gv[5] &= 0x60;
+    o->yspeed = (int16_t)(o->yspeed + 0x5A);
+    if (o->yspeed > 30000)
+        o->yspeed = 30000;
+    if (carry(&o->ypart, o->yspeed)) {
+        if (!can_go_down(o)) {
+            play_sample(0xA3, NULL);
+            for (int i = 0; i < 7; i++) {
+                const sprite_t *image = G.img[IMG_ROCKPIEC + frandom(2)];
+                const uint16_t x = (uint16_t)(o->x + frandom((uint16_t)(o->xsize - 10)));
+                const uint16_t y = (uint16_t)(o->y + frandom((uint16_t)(o->ysize - 10)));
+                obj_t *r = spawn_obj(0x00, LIST_MAIN, image, x, y);
+                r->yspeed = (int16_t)-(o->yspeed >> 1);
+                r->xdir = (uint8_t)frandom(2);
+                if (frandom(2) != 0)
+                    r->flags &= 0xFFFE;
+                else
+                    r->flags |= 1;
+            }
+            if (o->gv[5] & 0x20)
+                G.you->surface_flags &= 0xFD;
+            obj_kill(o);
+            return 0;
+        }
+        o->y++;
+    }
+    maintain_platform(o);
+    if (!(o->gv[5] & 0x20) && obj_overlap(G.you, o))
+        maintain_block(o);
+    return 0;
+}

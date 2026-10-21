@@ -594,6 +594,34 @@ overlapping a wall (left of view x 0x12, or right of 0x130) is pushed a pixel ba
 player is crushed (FYOUCRUSH) when rock (CANGOLEFT / CANGORIGHT) or the other wall leaves no
 room, unless climbing.
 
+**The goblin boss** (goblinb, level 16, RXBOSSF.C). The room is two views wide (33 columns);
+the head (type 0x4d, priority 0x47, `_Boss`) sits in the right wall (GenericVar[0] 1) or the
+left (0) one, the wall's rock body being map tiles. BOSSCENTER lets the view go when the player
+first lands, waits 0x44c ticks, scrolls a pixel every 16 ticks to the head's side and starts it
+(BOSSHEADSPIT) once it's wholly in view. Its decompile runs into the C startup code halfway:
+Ghidra resolved the function's near jumps into segment 1000, so those targets had to be
+recomputed from the jump bytes (target = next instruction + displacement, same segment). The
+head can be hurt only with its mouth shut (BossHeadID[0]) while spitting, and at any time while
+shaking, bouncing, floating or returning; the whip can't reach it inside the wall, whose cells
+are solid except the mouth's corner. Spit (type 0x4e) flies at `|dx| * 0x80 + 6000` and
+splashes into three bits (type 0x57). The seventh round is BOSSHEADSHAKE: GenericVar[0] flips,
+and the head jumps out (GENERICBEGINJUMP, ±32000) into BOSSHEADBOUNCE, which bounces it at the
+player, each landing spawning a BOSSSHAKE (`_DiffMode` + 4 rocks from the ceiling at y 0x60),
+until it comes down at y 0x72 near its new wall (x 0x40 or 0x1ae). BOSSHEADSPAWN raises a
+SPINNINGPLATFORM every 0x276 ticks at the free one of y 0xf8 / 0xd6 / 0xb4 (DS:00aa: the
+"taken" bytes, DS:00ad: the heights) and kills rock monsters; with the third it floats
+(BOSSHEADFLOAT; its leftward clamp sets ySpeed by mistake). The platforms shuttle between the
+wall and the view's edge and stop after three trips (NOSPINPLAT); the top one at rest sends the
+floating head home when it passes x 400 or 0x54. BOSSHEADRETURN sinks it to y 0x80, shakes the
+view six times (rock monsters possible above difficulty 2) and rewrites rows 11-16 of columns
+3-9 or 23-29: FgMap gets the wall's bonus tiles (`x + y * 20 + 6`, or `+ 13` on the right), the
+background cells get the four collision bits, and the other side is cleared. The decompile
+shows these as `((FGMAP *)_FgMap)[1].Table[i]` and `((BGMAP *)_BgMap)[0xc].Table[i - 1]`, which
+fold the column offset into a struct index (FGMAP counts as 3 bytes there, BGMAP as 4); the
+machine code gives columns +3 and +23. ENEMYHIT (priority 0x47) gives BOSSHEADDIE: every 20
+ticks a flicker, rocks and an explosion; after 0xb4 the level is won, and falling platforms
+(SPINPLATDIE) shatter.
+
 ## Tiles: types and collision
 
 **Collision flags** are bits of the background cells (`MOVE.C`): `CANGOLEFT` fails if a

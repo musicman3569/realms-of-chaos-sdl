@@ -73,6 +73,8 @@ build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold right:0-3000,jump:1000-
 build/roc.exe game/ROC.EXE --level 1 --ticks 40000 --sweep --list --screenshot out.png
 # headless: the female with 10 gems throws fireballs; print the player's state every 80 ticks
 build/roc.exe game/ROC.EXE --level 0 --female --gems 10 --player 470,231 --ticks 3000 --hold attack:900-920 --trace 80 --screenshot out.png
+# headless: the goblin boss with an invincible player (--invincible sets _YouInvincible)
+build/roc.exe game/ROC.EXE --level 16 --invincible --ticks 30000 --list --screenshot out.png
 # headless: the Ross fight, the boss starting with 165 of its 170 hits taken (--boss-hits)
 build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
 ```
@@ -229,6 +231,19 @@ player's position and animator, the inventory and the level's counters at the en
   (about 2 s each way, a pause and a thud at each end, the view shaking), the walls, platforms
   and chains stay pinned to the view, the walls shove the player along, and a player shoved
   into rock is crushed (FYOUCRUSH) and the level restarts.
+- Port, the goblin boss (goblinb, level 16; notes "The goblin boss"): new `src/rxboss.c`
+  (RXBOSSF.C) FBOSSCENTER, FBOSSHEADSPIT, SHAKE, FLOAT, BOUNCE, SPAWN, RETURN, DIE, FDOSPITTLE,
+  FDOSPITTLE2 and FBOSSSHAKE; in `src/rxplat.c` SPINNINGPLATFORM, NOSPINPLAT and SPINPLATDIE; the
+  boss's death in ENEMYHIT and BOSSHEADBOUNCE / DOSPITTLE2 in GENERICUP / GENERICFALL; SETUPOBJ
+  types 0x4e, 0x4f and 0x57. `--invincible` sets `_YouInvincible` for testing (crushing still
+  kills, as in the original). Verified headless: the camera waits 0x44c ticks after the player
+  lands and scrolls to the head in the right wall, which spits gobs that splash; on the seventh
+  round it shakes loose and bounces left with rocks falling, settles at x 0x40, raises three
+  spinning platforms the player can ride (the lowest pushes a standing player into the wall and
+  crushes them), floats, and once the platforms rest sinks into the left wall at x 0x54, y 0x80,
+  whose rock body is rebuilt from tiles in line with the map; it then spits from there. A whip
+  hit while it bounces (damage preset to 119 of 120) kills it: it flickers through 0xb4 bursts
+  and level 17 starts.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -238,8 +253,8 @@ player's position and animator, the inventory and the level's counters at the en
 
 1. **The other bosses** (next), one at a time with their cameras; a `--sweep` run lists the
    animators a level reaches that aren't ported (it needs `--screenshot`, or it opens a
-   window), and `--boss-hits` shortens a fight. Left: the goblin boss's head, BOSSCENTER (16;
-   RXGOBLIN.C / RXBOSSF.C), level 20's
+   window), `--boss-hits` shortens a fight and `--invincible` keeps the player alive. Left:
+   level 20's
    skeleton boss (type 0x53, which INITLEVEL spawns: not yet), and the demon, DEMONWAIT /
    DEMONCENTER (25; RXDEMONF.C); BOSSHITPOINTS and ROSSSHAKE are already there for them.
    **INITLEVEL** (RXOBJF.C:391, ported in `game_start`) still lacks these spawns, which is
@@ -249,7 +264,7 @@ player's position and animator, the inventory and the level's counters at the en
    twice: `_Boss` and `_Neck[0]`). The skeletons (SKEL*,
    DOSKELHEAD) in RXSKELF.C are spawned by a boss, not placed; DOTORCH (type 0x2c) isn't placed
    by INITOBJ either. The priorities GENERICUP / GENERICFALL still skip (`own_behaviour` in
-   `src/rxgenerl.c`: 0x49, 0x47, 0x97, 0x4a) are the bosses' pieces and the boulders. `tools/animators.py` maps object types to animators. Left over from the damage
+   `src/rxgenerl.c`: 0x97, 0x4a) are the boulders and the skeleton boss. `tools/animators.py` maps object types to animators. Left over from the damage
    milestone: the special item (key 6, spawn type 0x37
    / DOTRANSFORMER), the magic gems (DEATHGEM, LIGHTNINGGEM, SHIELDGEM; SWORDGEM's animation
    for a weapon upgrade, which is applied without it), GRABSTUFF's other spawners (bolo cats

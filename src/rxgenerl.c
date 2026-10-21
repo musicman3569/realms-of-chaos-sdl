@@ -125,8 +125,14 @@ static void own_behaviour(obj_t *o, bool falling)
     case 0x66:
         dragon_head_die(o);
         return;
-    case 0x49: case 0x47: case 0x97: case 0x4A:
-        return; /* FDOSPITTLE2, FBOSSHEADBOUNCE, ...: not ported yet */
+    case 0x49:
+        do_spittle2(o);
+        return;
+    case 0x47:
+        boss_head_bounce(o);
+        return;
+    case 0x97: case 0x4A:
+        return; /* ROLLINGBOULDER, the skeleton boss: not ported yet */
     case 0x4E:
         if (!falling)
             break;
@@ -551,7 +557,16 @@ void enemy_hit(obj_t *o, uint8_t max_hits)
         o->counter = 0;
         return;
     }
-    if (pr == 0x47 || (pr == 0x4A && o == G.boss) || pr == 0x4C)
+    if (pr == 0x47) {
+        /* the goblin boss */
+        sound_link_kill(o->gv[4]);
+        o->gv[4] = (int16_t)play_sample(0x4C, NULL);
+        G.boss->animator = A_BOSSHEADDIE;
+        G.boss->counter = 0;
+        o->gv[1] = 0;
+        return;
+    }
+    if ((pr == 0x4A && o == G.boss) || pr == 0x4C)
         return; /* the other bosses' deaths: not ported yet */
     if (pr == 2) {
         o->old_animator = o->animator;

@@ -162,7 +162,7 @@ void setup_obj(obj_t *o, uint8_t type)
             o->animator = A_DRAGONCENTER;
             o->gv[0] = 0;
         } else if (lv == 0x10) {
-            o->animator = 0x685D; /* BOSSCENTER */
+            o->animator = A_BOSSCENTER;
             o->gv[0] = 0;
             o->flags &= 0xBF;
             o->gv[5] &= 0xFFFE;
@@ -683,6 +683,23 @@ void setup_obj(obj_t *o, uint8_t type)
         o->gv[1] = 0;
         o->counter = 0;
         G.boss = o;
+        break;
+    case 0x4E: /* the goblin boss's spit (the caller sets DOSPITTLE) */
+    case 0x57: /* a bit of it (GENERICBEGINJUMP, then DOSPITTLE2) */
+        o->update = 0x1000;
+        o->priority = type == 0x4E ? 0x48 : 0x49;
+        o->gv[4] = (int16_t)(frandom(0x1E) + 0x5A);
+        o->yspeed = 0;
+        o->gv[5] = 0;
+        break;
+    case 0x4F: /* the goblin boss's spinning platform */
+        o->surface_flags |= 0x10;
+        o->priority = 0x46;
+        o->animator = A_SPINNINGPLATFORM;
+        o->gv[5] = 0;
+        o->gv[0] = 0;
+        o->update = 0x1000;
+        o->gv[5] |= 0x40;
         break;
     case 0x51: /* boar */
         o->flags |= OF_RATE | 0x10;

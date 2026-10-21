@@ -3,7 +3,7 @@
  * rxgems.c (RXGEMS.C), rxgrab.c (RXGRABF.C), rxyou.c (RXYOU.C / RXYOUF.C), rxskel.c
  * (RXSKELF.C), rxgoblin.c (RXGOBLIN.C), rxswamp.c (RXSWAMP.C / RXSWAMPF.C), rxmush.c
  * (RXMUSH.C), rxcastle.c (RXCASTLE.C), rxdead.c (RXDEAD.C),
- * rxross.c (RXROSSF.C).
+ * rxross.c (RXROSSF.C), rxboss.c (RXBOSSF.C).
  * behave.c maps Animator values to them. */
 #ifndef ROC_BEHAVE_H
 #define ROC_BEHAVE_H
@@ -83,6 +83,9 @@ int brik_shake(obj_t *o);
 int do_container_bomb(obj_t *o);
 int swamp_raft(obj_t *o);
 int frog_plat(obj_t *o);
+int spinning_platform(obj_t *o);
+int no_spin_plat(obj_t *o);
+int spin_plat_die(obj_t *o);
 
 /* rxcave.c */
 int do_cave_spikes(obj_t *o);
@@ -137,6 +140,19 @@ int do_back_stars(obj_t *o);
 
 /* rxdead.c */
 int do_wisp(obj_t *o);
+
+/* rxboss.c */
+int boss_center(obj_t *o);
+int boss_head_spit(obj_t *o);
+int boss_head_shake(obj_t *o);
+int boss_head_float(obj_t *o);
+int boss_head_bounce(obj_t *o);
+int boss_head_spawn(obj_t *o);
+int boss_head_return(obj_t *o);
+int boss_head_die(obj_t *o);
+int do_spittle(obj_t *o);
+int do_spittle2(obj_t *o);
+int boss_shake(obj_t *o);
 
 /* rxross.c */
 void spawn_shake(void);                          /* a ROSSSHAKE: the view shakes */
