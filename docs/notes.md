@@ -344,8 +344,9 @@ are indexed by `(_GameFlags & 4) != 0`: 0 the female, 1 the male. NEWLEVELSETUP 
 gems and the maximum hit points to `_Old*`, which a death restores. Gems are also the
 female's ammunition: each fireball costs one.
 
-**LEVELTIMER** (RXTIMERF.C) is a timer NEWLEVEL installs with a rate of 0x24 ticks (RUNTIMERS
-runs it at most once a frame: about 16 times a second). It counts down `_hitagain` (the
+**LEVELTIMER** (RXTIMERF.C) is a timer NEWLEVEL installs with a rate of 0x0c; the timer task
+counts the timers every fourth tick, so it runs every 0x30 ticks (RUNTIMERS runs it at most once a
+frame: about 12 times a second; earlier notes and the port had 0x24, the title's rate). It counts down `_hitagain` (the
 protection after a hit; meanwhile the player bleeds drops of blood) and the player's
 GenericVar[0] (the attack's recovery: 10 a run while the attack key is up, else 1), and gives
 spawned objects (no `Flags` 4) parked in the off-screen list the animator OFFKILLER.
@@ -495,6 +496,85 @@ y 0xc6 to 0xa1 at the view's left (a pixel every 4 ticks), stays 0x579 ticks and
 1, 2 and 8) and start again at the first levels of an episode (next level 0-2, 8, 9). The port
 also clears a leftover "hint up" bit at a level's start, which the original keeps (and which would
 stop the hints).
+
+## The game loop
+
+**Timers** (TIMER.C and the timer task at 1000:c5d3, 582 Hz): each run adds `_TicAmt` (1, or 0
+while PAUSEACTION has the game frozen) to the game's time (DS:1c54, ANIMATORUPDATE's ticks) and 1
+to `_TimerTics` (DS:1c58, real time: WAITTICS waits on it), and every fourth run, while the game
+runs, counts each INSTALLTIMER timer up; RUNTIMERS calls a timer whose count reached its rate.
+So rates are in fours of ticks: LEVELTIMER 0x0c (48 ticks), TITLETIMER 0x24 (144 ticks).
+
+**`_MachControl`** (RXMAIN.C, the real main): the screen, the fonts, then NEWLEVEL and
+SAVECONFIGFILE until `_QuitGame`. `_nextlevel` starts at 27 (the title), or at the command line's
+level after GAMEINIT. **NEWLEVEL** (RXNEWLVF.C:42): NEWLEVELSETUP returns 0 for the title (frame
+hook PROCESSTITLEPAGE, TITLETIMER), 1 for a level (PROCESSLEVEL, LEVELTIMER) or 6 for level 28
+(PROCESSTEXT); then RUNLEVEL with the view on the player (fixed for 15, 20, 25 and 27+, or
+`_RestoreX/Y` after a restore), again while `_RestoreFlag` is 0xfe; then everything is freed.
+**NEWLEVELSETUP** (:155): stops the music, clears the level's state (`_GameFlags` but 0xfff4,
+the found counts, `_quitflag`, `_Vine_x/y`, `_hitagain`...), keeps the score, gems, hit points and
+`_NextScoreUp` in `_Old*` for a death, reads a restore's level (RETRIEVELEVEL: 'd' means none), shows
+`loader.vga` (DISPLAYVGA + FADETOPAL) for levels below 27, loads the level (on `_DiffMode` < 3
+levels 1, 3, 4, 5, 6, 11, 12, 13, 21, 22 and 24 use frsteasy, riveasy, caveeasy, casteasy,
+cas2easy, musheas1, musheas2, cavebeas, cave1eas, mushseas and gobseas.led, and level 26
+secreasy.led on Super Easy), the warp and palette tables, the song (rocsong.txt), counts the
+level's gems (tile types 0x71: 1, 0x72: 5, background or bonus tiles), secrets (0x74, one fewer on
+level 18), statues (placed hittable objects of priority 2) and enemies (the other hittable ones),
+then RESTOREGAME or INITLEVEL. **RUNLEVEL** (3cb4:157c, assembly): `_Transition1` (MYTRANSIT1:
+fade out and blank, unless the title or `_SkipFade`), draws both pages, `_Transition2`
+(MYTRANSIT2: fade to `_SavePal` after a restore, else `_LevelPal`; `_ScreenOn` = 1), then per frame
+the frame hook (non-zero ends the run), RUNTIMERS, ANIMATORUPDATE and the drawing. MYFADEOUT /
+FADETOPAL take 32 steps of a retrace and a tick, each step 1/(32 - n) of what's left (FADETOPAL's
+maths is 16-bit unsigned: a step down wraps round to its low byte).
+
+**PROCESSLEVEL** `_quitflag` cases (RXLEVEL.C): 1 `_QuitGame`; 2 back to the title; 3 and 7
+`_nextlevel` + 1, the hit points topped up, and for 3 PERCENTWIN, and at an episode's end (next 8,
+17 or 26) FINALPERCENTWIN, HS_CHECKSCORES(episode) and the story (roccast, rocgobl, rocdemon.txt)
+on level 28; the secret level (26) returns to `_ReturnLevel`; 4 (dead) counts 100 frames in
+`_QuitGame`, then QUICKMENU(2) (DEATHRESTOREWIN, if the quick save holds this level) or the level
+again with the `_Old*` score, gems and hit points; 5 (F1, or the menu's "Read Me!") saves to ROC.SGT
+and goes to level 28, whose PROCESSTEXT reads the file and then restores ROC.SGT (`_RestoreFlag`
+'E': "ROC.SG0" with its digit + 'E' - 1 is "ROC.SGt"); 6 RUNLEVEL again (a warp within the level).
+The windows `_MenuComing` asks for open at the next frame; saving (F2 / F8) isn't allowed while
+dying or between levels.
+
+**The title** (RXTITLE.C:11 PROCESSTITLEPAGE): Esc / Enter / Space MAINMENU, F1 the help, F3, F9,
+F10; after 0x3d TITLETIMER runs (about 15 s) text.pal / text.bg replace the title's palette and
+the first 260 tiles (`_BgBuffer`, `_Bg2Buffer`), RUNLEVEL runs again without fading, and
+DISPLAYCREDITS (3000 ticks) and DISPLAYSCORES (the Hall of Heroes' three pages, 1500 ticks each)
+show; then title.pal / title.bg come back. A new game (DIFFICULTYMENU: `_nextlevel` 0xff, 7 or 0x10
+and `_quitflag` 7) or a load ends the title's run because `_nextlevel` or `_RestoreFlag` changed;
+the branch that sets `_QuitGame` is only reached with `_quitflag` 1. **PROCESSTEXT** (:234) shows
+a page a frame (PAGEREADER); after an episode's story ENDWIN ("READY FOR MORE?") starts the next
+episode (GAMEINIT, level 8 or 17); after rocdemon.txt the Hall of Heroes, then the title.
+**GAMEINIT** (RXWINDF.C:210): no score, 100 gems on Super Easy, hit points 10/10, 6/8 or 4/6 (the
+male 4 on Psycho Warrior), weapons at 3, 2 or 1, `_NextScoreUp` 10000 (15000 on Psycho Warrior),
+`_GameFlags` 4 (the male), `_LightningFlag` 1 (the hero arrives in lightning), the totals cleared.
+
+**Menus** (RXWINDF.C): OPENMENU draws the lines in BigFontID 16 pixels apart in a centred
+Border2ID window (whose frames are empty: the menus are text on the picture); SELECTMENU moves
+with up / down or a line's first letter (LineKey), picks on Enter or attack being let go (1-based),
+leaves on Esc or jump (100), flashes the selected line's outline colour (font colour table 0 or
+1, entry 0) a step every 20 ticks and remembers each menu's line (DS:53e0). MAINMENU (title: New
+Game, Options, Load, Hall of Heroes, Read Me!, Quit; level: New Game, Options, Load, Save, Read
+Me!, Exit to Title, Quit), OPTIONMENU (Heroes' Status in a level, Messages, Display, Blood
+behind the blood password, Blood Password: old, new, again, Sound Volume), SAVEMENU / LOADMENU (8
+slots ROC.SG0-7: "ROCX", version 'd', a 20-character description, the level; an empty description
+is "* n *"), QUICKMENU (the last slot used, `_QuickFile`), PROMPTWIN ("quit to DOS.", "end this
+game.", "restore", "QuickSave over", "QuickRestore"). PERCENTWIN shows the time against the level's
+best (roc.sco), the gems, enemies, statues and secrets found of the level's, and adds them to the
+totals FINALPERCENTWIN shows. **roc.sco** (HSCORE, 594 bytes; rocscore.txt in ROC.DAT is the
+default): per episode a 24-character name and the score, the time (h:m:s), enemies, statues, gems
+and secrets, and each level's best time. HS_CHECKSCORES asks for a name once (HS_GETNAME; empty is
+"I forgot my name!") for every record equalled or beaten. **ROC.CFG** (CONFIGstruct, 70 bytes):
+`_KeyTrans[8]`, MyBUTTON0-3, the joystick's calibration, the sound and music cards, voices and
+volumes, StatusOn, MessageOn, JoystickOn, BloodOn, BloodPass[20], GammaCorrect.
+
+**The port**: the windows block on `host_frame` as the original blocks on WAITTICS; WINUP keeps
+the screen (SAVEPAGE), WINCLEAR puts it back (REFRESHPAGE redraws the level), WINDOWN leaves the
+window for the next frame. The port's saved games are its own (`ROCP.SG0-7`, `ROCP.SGT`): the same
+header ("ROCP", version 1) and every object and the game's state (pointers as object numbers,
+images as `_Img` indexes, the maps and palettes, `_DragonMove`).
 
 ## Bolo cats and the snake platform
 

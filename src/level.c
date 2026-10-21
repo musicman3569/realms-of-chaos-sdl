@@ -65,7 +65,7 @@ static bool load_mask_tiles(mask_tiles_t *m, const archive_t *arc, const char *n
 }
 
 bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int number,
-                char *err, size_t errlen)
+                const char *led, char *err, size_t errlen)
 {
     memset(lv, 0, sizeof *lv);
     if (number < 0 || number >= LEVEL_COUNT) {
@@ -75,7 +75,10 @@ bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int
     lv->number = number;
     memcpy(lv->slope, list->slope, sizeof lv->slope);
     char path[32];
-    snprintf(path, sizeof path, "%s.led", list->name[number]);
+    if (led)
+        snprintf(path, sizeof path, "%s", led);
+    else
+        snprintf(path, sizeof path, "%s.led", list->name[number]);
     size_t len;
     uint8_t *d = arc_load(arc, path, &len);
     if (!d) {

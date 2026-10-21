@@ -26,6 +26,9 @@ add_executable(roc
     src/rxdead.c
     src/rxdemon.c
     src/ui.c
+    src/host.c
+    src/game.c
+    src/save.c
     src/rxross.c
     src/rxboss.c
     src/rxyou.c

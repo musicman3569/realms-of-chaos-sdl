@@ -63,8 +63,12 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 ## Running
 
 ```
-build/roc.exe game/ROC.EXE                          # play level 0
-build/roc.exe game/ROC.EXE --level 5                # play level 5
+build/roc.exe game/ROC.EXE                          # the game: title, menus, levels
+build/roc.exe game/ROC.EXE --level 5                # a new game at level 5 (skips the title)
+# headless: the title, Esc at tick 1000 (main menu), then Enter three times: a new game on Normal
+build/roc.exe game/ROC.EXE --ticks 6000 --hold 0x01:1000-1020,0x1c:1500-1520,0x1c:2000-2020,0x1c:2500-2520 --screenshot out.png
+# headless with files (ROC.CFG, roc.sco, saves) in a scratch folder: F2, Enter (slot 1), type "test", Enter
+build/roc.exe game/ROC.EXE --level 0 --data-dir scratch --ticks 2500 --hold 0x3c:600-610,0x1c:800-810,0x14:900-910,0x12:950-960,0x1f:1000-1010,0x14:1050-1060,0x1c:1100-1110 --screenshot out.png
 # headless: 1800 ticks (about 3 s) with the camera fixed and the player placed; save the view
 build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800 --screenshot out.png
 # headless with scripted keys: walk right, jump at ticks 1000-1100
@@ -84,20 +88,28 @@ build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold 0x20:500-520,0x3a:500-5
 build/roc.exe game/ROC.EXE --level 2 --score 25000 --ticks 1200 --hold 0x0f:600-610 --screenshot out.png
 # headless: collect prize 0x21 (CollectID index: the five shields) at the start, then change hero (Space)
 build/roc.exe game/ROC.EXE --level 0 --gems 50 --collect 0x21 --ticks 4000 --hold item:1000-1010 --list --screenshot out.png
-build/roc.exe game/ROC.EXE --level 7 --female --gems 60 --boss-hits 165 --ticks 12000 --hold right:0-1700,attack:5000-5010,attack:5300-5310 --list --screenshot out.png
+# headless: Ross beaten (attacks every 250 ticks), then the results, a name for the Hall of Heroes
+# (Shift + H, E, R, O, Enter), the story (Esc) and "READY FOR MORE?" (Y): episode 2 starts
+H=right:0-1700; for t in $(seq 3000 250 9000); do H=$H,attack:$t-$((t+10)); done
+build/roc.exe game/ROC.EXE --level 7 --female --invincible --gems 60 --boss-hits 165 --data-dir scratch --ticks 14000 --hold $H,0x2a:9450-9520,0x23:9500-9510,0x12:9600-9610,0x13:9700-9710,0x18:9800-9810,0x1c:9900-9910,0x01:11000-11010,0x15:12000-12010 --screenshot out.png
 ```
 
-`ROC.DAT` must be next to the EXE. The level runs at the game's 582 Hz tick rate. Game keys:
-arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs: `--female`), Space the
-special item (change hero), Enter + up / down (or PgUp / PgDn) look, F1 help (the reader), F5
-status display on / off, F6 / Tab / Pause the status window (pause), F10 quit, F11 gamma; the
-cheats: Backspace held, then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and
-D + CapsLock + X the fly mode (Ctrl lands). Viewer keys: [ and ] change level, C free camera (the
-arrows move the view), O hides the objects, F12 saves `shotNNN.png`, Esc quits (when no window
-is open; the game's main menu isn't ported). Reaching the exit goes on to the next level; dying restarts
-the level 100 frames later (no menu or story screens yet). Objects whose behaviour isn't
-ported stay still, and each such animator is reported once on stderr. Headless runs print the
-player's position and animator, the inventory and the level's counters at the end.
+`ROC.DAT` must be next to the EXE. The game runs at its 582 Hz tick rate. Keys (ROC.CFG's, by
+default): arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs), Space the special
+item (change hero), Enter + up / down (or PgUp / PgDn) look; Esc the main menu, F1 help, F2 / F3
+save / load, F8 / F9 quick save / load, F5 status display on / off, F6 / Tab / Pause the status
+window, F10 quit, F11 gamma (F4, the sound menu, does nothing yet); the cheats: Backspace held,
+then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
+fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
+first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
+Heroes) and the saved games (the port's own `ROCP.SG0-7`) live in the game's folder, or in
+`--data-dir`; headless runs touch no files without `--data-dir`. `--level N` starts a new game
+there without the hero's lightning entrance (the title's "Play a New Game" has it), as the
+headless tests always started. In headless runs the fades are instant, the run stops wherever it
+is when `--ticks` are used up (in a menu, on the title...), and the screenshot is the screen as
+last shown. Objects whose behaviour isn't ported stay still, and each such animator is reported
+once on stderr. Headless runs print the level, the player's position and animator, the
+inventory and the level's counters (found / in the level) at the end.
 
 ## Completed
 
@@ -345,6 +357,31 @@ player's position and animator, the inventory and the level's counters at the en
   starts level 25; F1 opens page 12 of 33 and PgDn turns it; on level 0 the hints "Press ESC for
   the main menu" and "Press SPACEBAR to change heroes!" slide up in turn; F5 and F11 work; 25000
   points make two bonuses; the female carries into the next level. All sweeps are clean.
+- Port, the game loop (notes "The game loop"): new `src/host.c` (the screen, palette, timer and
+  keyboard on SDL2, or scripted headless: code draws into `Vga` and loops on `host_frame`, as the
+  original loops on WAITTICS; MYFADEOUT / FADETOPAL), new `src/game.c` (`_MachControl`, NEWLEVEL,
+  NEWLEVELSETUP with the loading screen, the easy maps and the level's counts, RUNLEVEL with the
+  transitions, PROCESSLEVEL with every `_quitflag` case, PROCESSTITLEPAGE with TITLETIMER and
+  the credits / Hall of Heroes cycle, PROCESSTEXT, GAMEINIT), new `src/save.c` (ROC.CFG and
+  roc.sco in the original's formats; saved games in the port's own format, all objects and
+  state), and `src/ui.c` rewritten as the original's blocking windows: MAINMENU, DIFFICULTYMENU,
+  OPTIONMENU (hints, status display, blood and the blood password, CHECKPASSWORD), OPENMENU /
+  SELECTMENU / CLOSEMENU, SAVEMENU, LOADMENU, QUICKMENU, DEATHRESTOREWIN, PROMPTWIN (all five
+  questions), STATUSWIN, PERCENTWIN, FINALPERCENTWIN, HS_CHECKSCORES / HS_GETNAME, DISPLAYCREDITS,
+  DISPLAYSCORES / SCOREPAGE, ENDWIN, PAGEREADER / READERWIN / READERFETCHER (stories don't wrap,
+  the help does), WINGETSTR with typed characters. `Sess` (engine.h) holds what outlives a level.
+  Fixed on the way: LEVELTIMER runs every 0x30 ticks (rate 0x0c in fours of ticks), not 0x24, so
+  timings in the older "Verified" notes are a little off; Normal and the easier modes now load the
+  easy maps (frsteasy.led...). The viewer keys ([, ], C, O) are gone. Verified headless: the title
+  shows, after 15 s the credits, the Hall of Heroes' three pages and the title again; Esc opens
+  the main menu, and a new game goes through the episode and difficulty menus to level 0 with the
+  lightning entrance; a save (F2, a typed description) and a load (F3, "restore?") bring back
+  every object as saved; F1 saves, reads the help on level 28 (page 12, PgDn) and restores the
+  level; Esc, "Exit to Title", Y goes back to the title and F10, Y quits; a death offers the
+  QuickRestore ("TRY AGAIN!") and Y restores, another key restarts the level; Ross beaten shows
+  "Level Cleared!", the final results, the Hall of Heroes' name entry (roc.sco written), the
+  episode's story and "READY FOR MORE?", and Y starts level 8. Sweeps of all 27 levels with both
+  heroes are clean.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -352,18 +389,14 @@ player's position and animator, the inventory and the level's counters at the en
 
 ## Next steps
 
-1. **The game loop** (next): `_main` (RXMAIN.C) → title, menu, `NEWLEVELSETUP` → per-frame
-   `PROCESSLEVEL`, with the windows left from PROCESSLEVEL, which belong with the menus: Esc's
-   MAINMENU (with DIFFICULTYMENU, OPTIONMENU...), F2 / F3 SAVEMENU / LOADMENU and F8 / F9
-   QUICKMENU (SAVEGAME / RESTOREGAME, the object serializer), F4 SOUNDMENU (once there's sound),
-   ROC.CFG (LOADCONFIGFILE: keys, MessageOn, StatusOn, GammaCorrect...), the level-end windows
-   (PERCENTWIN, FINALPERCENTWIN, the high scores) and the story readers (roccast.txt...). Every
-   behaviour a level reaches is ported (a `--sweep` run lists any animator that isn't; it needs
-   `--screenshot`, or it opens a window; `tools/animators.py` maps object types to animators).
-   The decompiles are easiest to read from GhidraMCP's HTTP backend:
-   `http://127.0.0.1:8080/decompile?name=MAINMENU`.
+1. **Sound** (next): the Apogee Sound System (`SOURCE\*.C`: VOC effects through PLAYSAMPLE /
+   MAINTAINSOUND, MIDI music per level from rocsong.txt), then SOUNDMENU / VOLUMESELECT (the
+   menu items are there and do nothing), the title's and menus' VOCs (`_MenuVOC`), and the sound
+   settings in ROC.CFG (kept as found). Every behaviour already calls `play_sample`.
 2. **Background flags**: bits 9-14 of background cells (probably collision/animation; see
    `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
    are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
-3. Parallax backdrop (sky/horizon tiles show through gaps), palettes (`RXPALF.C`), sound
-   (Apogee Sound System; VOC effects and MIDI music).
+3. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
+   `MyBUTTON` keys); the original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
+   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the interactive window wasn't
+   tried by hand this milestone (only headless runs).

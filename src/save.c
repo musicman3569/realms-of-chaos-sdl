@@ -1,0 +1,553 @@
+/* RXSAVEF.C: ROC.CFG, roc.sco and saved games (see save.h). */
+#include "save.h"
+
+#include "engine.h"
+#include "game.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern int8_t dragon_move[4][180]; /* rxswamp.c: _DragonMove */
+
+static char dir[1024];
+static bool enabled;
+
+void save_set_dir(const char *d)
+{
+    enabled = d != NULL;
+    snprintf(dir, sizeof dir, "%s", d ? d : "");
+}
+
+/* APOGEECD: a file in the game's folder. */
+static void path_of(char *out, size_t n, const char *name)
+{
+    const size_t len = strlen(dir);
+    const bool sep = len && dir[len - 1] != '/' && dir[len - 1] != '\\';
+    snprintf(out, n, "%s%s%s", dir, sep ? "/" : "", name);
+}
+
+static bool read_file(const char *name, void *buf, size_t size)
+{
+    if (!enabled)
+        return false;
+    char path[1100];
+    path_of(path, sizeof path, name);
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return false;
+    const bool ok = fread(buf, 1, size, f) == size;
+    fclose(f);
+    return ok;
+}
+
+static bool write_file(const char *name, const void *buf, size_t size)
+{
+    if (!enabled)
+        return false;
+    char path[1100];
+    path_of(path, sizeof path, name);
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = fwrite(buf, 1, size, f) == size;
+    ok = fclose(f) == 0 && ok;
+    return ok;
+}
+
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+static uint32_t rd32(const uint8_t *p) { return rd16(p) | (uint32_t)rd16(p + 2) << 16; }
+static void wr16(uint8_t *p, unsigned v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static void wr32(uint8_t *p, uint32_t v) { wr16(p, v & 0xFFFF); wr16(p + 2, v >> 16); }
+
+/* ------------------------------------------------------------------------------------------ */
+/* ROC.CFG (CONFIGstruct, 70 bytes)                                                            */
+
+enum { CFG_SIZE = 0x46 };
+static uint8_t cfg[CFG_SIZE];    /* the file as read: what the port doesn't use is kept */
+static bool cfg_read;
+
+bool config_load(void)
+{
+    if (!read_file("ROC.CFG", cfg, CFG_SIZE))
+        return false;
+    cfg_read = true;
+    for (int i = 0; i < 8; i++)
+        Sess.key_trans[i] = rd16(cfg + i * 2);
+    Sess.status_on = cfg[44];
+    Sess.message_on = cfg[45];
+    Sess.blood_on = cfg[47];
+    memcpy(Sess.blood_pass, cfg + 48, 20);
+    Sess.blood_pass[19] = 0;
+    Sess.gamma = cfg[68] <= 0x10 ? cfg[68] : 0;
+    return true;
+}
+
+void config_save(void)
+{
+    if (!cfg_read) {
+        /* SETUP's defaults for what the port doesn't set: no joystick, no sound */
+        memset(cfg, 0, sizeof cfg);
+        wr16(cfg + 32, 0xFFFF);
+        wr16(cfg + 38, 0xFFFF);
+        wr16(cfg + 36, 0xFF);
+        wr16(cfg + 42, 0xFF);
+    }
+    for (int i = 0; i < 8; i++)
+        wr16(cfg + i * 2, Sess.key_trans[i]);
+    cfg[44] = Sess.status_on;
+    cfg[45] = Sess.message_on;
+    cfg[47] = Sess.blood_on;
+    memset(cfg + 48, 0, 20);
+    memcpy(cfg + 48, Sess.blood_pass, strnlen(Sess.blood_pass, 19));
+    cfg[68] = Sess.gamma;
+    if (write_file("ROC.CFG", cfg, CFG_SIZE))
+        cfg_read = true;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* roc.sco (HSCORE, 594 bytes)                                                                 */
+
+enum { HS_SIZE = 0x252 };
+
+static void hs_names(char (*names)[24], const uint8_t *p)
+{
+    for (int i = 0; i < 3; i++) {
+        memcpy(names[i], p + i * 24, 24);
+        names[i][23] = 0;
+    }
+}
+
+static void hs_unpack(hscore_t *h, const uint8_t *b)
+{
+    memset(h, 0, sizeof *h);
+    hs_names(h->score_name, b + 0);
+    for (int i = 0; i < 3; i++) {
+        h->score[i] = rd32(b + 72 + i * 4);
+        h->time_hour[i] = rd16(b + 156 + i * 2);
+        h->time_mins[i] = rd16(b + 162 + i * 2);
+        h->time_secs[i] = rd16(b + 168 + i * 2);
+        h->enemy[i] = rd16(b + 246 + i * 2);
+        h->statue[i] = rd16(b + 324 + i * 2);
+        h->gems[i] = rd16(b + 402 + i * 2);
+        h->secret[i] = rd16(b + 480 + i * 2);
+    }
+    hs_names(h->time_name, b + 84);
+    hs_names(h->enemy_name, b + 174);
+    hs_names(h->statue_name, b + 252);
+    hs_names(h->gems_name, b + 330);
+    hs_names(h->secret_name, b + 408);
+    for (int i = 0; i < 27; i++) {
+        h->best_minute[i] = rd16(b + 486 + i * 2);
+        h->best_second[i] = rd16(b + 540 + i * 2);
+    }
+}
+
+static void hs_pack(const hscore_t *h, uint8_t *b)
+{
+    memset(b, 0, HS_SIZE);
+    for (int i = 0; i < 3; i++) {
+        memcpy(b + i * 24, h->score_name[i], 24);
+        memcpy(b + 84 + i * 24, h->time_name[i], 24);
+        memcpy(b + 174 + i * 24, h->enemy_name[i], 24);
+        memcpy(b + 252 + i * 24, h->statue_name[i], 24);
+        memcpy(b + 330 + i * 24, h->gems_name[i], 24);
+        memcpy(b + 408 + i * 24, h->secret_name[i], 24);
+        wr32(b + 72 + i * 4, h->score[i]);
+        wr16(b + 156 + i * 2, h->time_hour[i]);
+        wr16(b + 162 + i * 2, h->time_mins[i]);
+        wr16(b + 168 + i * 2, h->time_secs[i]);
+        wr16(b + 246 + i * 2, h->enemy[i]);
+        wr16(b + 324 + i * 2, h->statue[i]);
+        wr16(b + 402 + i * 2, h->gems[i]);
+        wr16(b + 480 + i * 2, h->secret[i]);
+    }
+    for (int i = 0; i < 27; i++) {
+        wr16(b + 486 + i * 2, h->best_minute[i]);
+        wr16(b + 540 + i * 2, h->best_second[i]);
+    }
+}
+
+void hs_read(hscore_t *h)
+{
+    uint8_t b[HS_SIZE];
+    if (read_file("roc.sco", b, HS_SIZE)) {
+        hs_unpack(h, b);
+        return;
+    }
+    size_t len = 0;
+    uint8_t *d = Arc ? arc_load(Arc, "rocscore.txt", &len) : NULL;
+    memset(b, 0, sizeof b);
+    if (d)
+        memcpy(b, d, len < HS_SIZE ? len : HS_SIZE);
+    free(d);
+    hs_unpack(h, b);
+}
+
+void hs_write(const hscore_t *h)
+{
+    uint8_t b[HS_SIZE];
+    hs_pack(h, b);
+    write_file("roc.sco", b, HS_SIZE);
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Saved games                                                                                 */
+
+enum { SAVE_VERSION = 1, HEADER = 5 + 1 + 20 + 1 };
+static const char ident[5] = "ROCP"; /* (the original's is "ROCX", version 'd') */
+
+static void slot_name(char *out, size_t n, int slot)
+{
+    if (slot == RESTORE_TEMP)
+        snprintf(out, n, "ROCP.SGT");
+    else
+        snprintf(out, n, "ROCP.SG%c", '0' + slot - 1);
+}
+
+/* A growing buffer, written and read in little-endian order. */
+typedef struct {
+    uint8_t *p;
+    size_t len, cap, pos;
+    bool bad;
+} buf_t;
+
+static void put(buf_t *b, const void *data, size_t n)
+{
+    if (b->len + n > b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 65536;
+        while (cap < b->len + n)
+            cap *= 2;
+        uint8_t *p = realloc(b->p, cap);
+        if (!p) {
+            b->bad = true;
+            return;
+        }
+        b->p = p;
+        b->cap = cap;
+    }
+    memcpy(b->p + b->len, data, n);
+    b->len += n;
+}
+
+static void put8(buf_t *b, unsigned v)
+{
+    const uint8_t c = (uint8_t)v;
+    put(b, &c, 1);
+}
+
+static void put16(buf_t *b, unsigned v)
+{
+    uint8_t c[2];
+    wr16(c, v);
+    put(b, c, 2);
+}
+
+static void put32(buf_t *b, uint32_t v)
+{
+    uint8_t c[4];
+    wr32(c, v);
+    put(b, c, 4);
+}
+
+static void get(buf_t *b, void *data, size_t n)
+{
+    if (b->pos + n > b->len) {
+        b->bad = true;
+        memset(data, 0, n);
+        return;
+    }
+    memcpy(data, b->p + b->pos, n);
+    b->pos += n;
+}
+
+static uint8_t get8(buf_t *b)
+{
+    uint8_t c;
+    get(b, &c, 1);
+    return c;
+}
+
+static uint16_t get16(buf_t *b)
+{
+    uint8_t c[2];
+    get(b, c, 2);
+    return rd16(c);
+}
+
+static uint32_t get32(buf_t *b)
+{
+    uint8_t c[4];
+    get(b, c, 4);
+    return rd32(c);
+}
+
+/* Every object, list by list in order, numbered from 0. */
+static int obj_count(void)
+{
+    int n = 0;
+    for (int id = 0; id < LIST_COUNT; id++)
+        for (const obj_t *o = G.list[id]; o; o = o->next)
+            n++;
+    return n;
+}
+
+static int obj_number(const obj_t *x)
+{
+    if (!x)
+        return -1;
+    int n = 0;
+    for (int id = 0; id < LIST_COUNT; id++)
+        for (const obj_t *o = G.list[id]; o; o = o->next, n++)
+            if (o == x)
+                return n;
+    return -1;
+}
+
+static int name_number(const char *name)
+{
+    for (int i = 0; name && G.lv && i < G.lv->object_count; i++)
+        if (name == G.lv->objects[i].info)
+            return i;
+    return -1;
+}
+
+/* The state, in a fixed order: the inventory, the game's lasting state, the loop's totals and
+ * this level's counts, G (the level's), the palettes, the maps, the dragon's delay lines and
+ * the objects. W(x) is put16 or get16 and so on, so one list serves both ways. */
+#define FIELDS(B8, B16, B32, BYTES)                                                              \
+    B32(Inv.score); B16(Inv.gems); BYTES(Inv.max_hit_points, 2); BYTES(Inv.hit_points, 2);       \
+    BYTES(Inv.weapon_status, 2); B8(Inv.flags);                                                  \
+    B16(L.second_total); B16(L.minute_total); B16(L.hour_total); B16(L.gem_total);               \
+    B16(L.enemy_total); B16(L.statue_total); B16(L.secret_total); B16(L.gem_final);              \
+    B16(L.enemy_final); B16(L.statue_final); B16(L.secret_final); B16(G.gem_in_level);           \
+    B16(G.secret_in_level); B16(G.statue_in_level); B8(L.return_level);                          \
+    B16(G.org_x); B16(G.org_y); B32(G.seed); B8(G.diff_mode); B16(G.game_flags);                 \
+    B8(G.lightning_flag); B8(G.next_level); B8(G.message_on); B8(G.you_invincible);             \
+    B16(G.window_xsize); B8(G.window_ysize); B8(G.center_off); B8(G.wisp_walk);                  \
+    B16(G.vine_x); B16(G.vine_y); B16(G.scroll_left); B16(G.scroll_right);                       \
+    B16(G.scroll_upper); B16(G.scroll_lower); B8(G.blood_on); B8(G.status_on);                   \
+    B16(G.hitagain); B8(G.free_hit); B8(G.hit_release); B8(G.whip_fc); B8(G.whip_fcm);           \
+    B8(G.whip_fn); B8(G.whip_ai); B16(G.secret_found); B16(G.gem_found); B16(G.enemy_found);     \
+    B16(G.statue_found); B16(G.enemy_in_level); B8(G.monster_counter); B8(G.monster_number);    \
+    B8(G.max_monster_number); B8(G.monster_spawns); B16(G.timer_ticks); B16(G.splash_side);     \
+    B32(G.old_inv.score); B16(G.old_inv.gems); BYTES(G.old_inv.max_hit_points, 2);              \
+    BYTES(G.old_inv.hit_points, 2); B8(G.old_inv.flags); B16(G.old_game_flags); B8(G.gamma);    \
+    B32(G.next_score_up); B32(G.old_next_score_up); B32(G.level_tics); B32(G.next_second);      \
+    B8(G.timer_fix); B8(G.second_in_level); B8(G.minute_in_level); B16(G.parent_priority);      \
+    B16(G.face_timer); B8(G.neck_count); B16(G.you_walk); B16(G.you_jump); B16(G.you_duck);     \
+    B16(G.you_climb); B16(G.you_attack);                                                         \
+    BYTES(G.virt_pal, 768); BYTES(G.level_pal, 768); BYTES(G.lv->palette, 768);                 \
+    BYTES(dragon_move, sizeof dragon_move)
+
+bool save_game(int slot, const char *desc)
+{
+    if (!G.lv)
+        return false;
+    buf_t b = {0};
+    put(&b, ident, 5);
+    put8(&b, SAVE_VERSION);
+    char d[20] = {0};
+    memcpy(d, desc, strnlen(desc, 19));
+    put(&b, d, 20);
+    put8(&b, G.level);
+
+#define P8(x) put8(&b, (uint8_t)(x))
+#define P16(x) put16(&b, (uint16_t)(x))
+#define P32(x) put32(&b, (uint32_t)(x))
+#define PBYTES(x, n) put(&b, (x), (n))
+    FIELDS(P8, P16, P32, PBYTES);
+    put8(&b, (uint8_t)G.lv->rows);
+    put8(&b, (uint8_t)G.lv->cols);
+    const int cells = G.lv->rows * G.lv->cols;
+    for (int i = 0; i < cells; i++)
+        put16(&b, G.lv->bg[i]);
+    put(&b, G.lv->fg, (size_t)cells);
+
+    put16(&b, (uint16_t)obj_count());
+    for (int id = 0; id < LIST_COUNT; id++) {
+        for (const obj_t *o = G.list[id]; o; o = o->next) {
+            put8(&b, (uint8_t)id);
+            put8(&b, (uint8_t)o->list);
+            P16(o->priority); P16(o->blinks); P16(o->blink_ct); P16(o->draw_on);
+            P16(o->draw_off); P16(o->blink_color); P16(game_image_index(o->image));
+            P16(o->flags); P8(o->xdir); P8(o->ydir); P16(o->x); P16(o->y); P16(o->xpart);
+            P16(o->ypart); P16(o->xspeed); P16(o->yspeed); P16(o->xsize); P16(o->ysize);
+            P16(o->update); P16(o->counter); P16(o->animator); P16(o->old_animator);
+            P16(name_number(o->name)); P8(o->friction); P8(o->frame_no); P8(o->max_frames);
+            P8(o->anim_inc); P16(o->frame_count); P16(o->frame_count_max); P8(o->down_offset);
+            P8(o->up_offset);
+            for (int i = 0; i < 6; i++)
+                P16(o->gv[i]);
+            P8(o->surface_flags); P16(obj_number(o->child)); P16(obj_number(o->parent));
+        }
+    }
+    P16(obj_number(G.you));
+    P16(obj_number(G.boss));
+    for (int i = 0; i < 5; i++)
+        P16(obj_number(G.neck[i]));
+    P16(obj_number(G.hit_pts));
+#undef P8
+#undef P16
+#undef P32
+#undef PBYTES
+
+    char name[16];
+    slot_name(name, sizeof name, slot);
+    const bool ok = !b.bad && write_file(name, b.p, b.len);
+    free(b.p);
+    return ok;
+}
+
+/* Read a slot's file. */
+static bool load_slot(int slot, buf_t *b)
+{
+    char name[16], path[1100];
+    slot_name(name, sizeof name, slot);
+    path_of(path, sizeof path, name);
+    memset(b, 0, sizeof *b);
+    FILE *f = enabled ? fopen(path, "rb") : NULL;
+    if (!f)
+        return false;
+    uint8_t chunk[8192];
+    size_t n;
+    while ((n = fread(chunk, 1, sizeof chunk, f)) > 0)
+        put(b, chunk, n);
+    fclose(f);
+    if (b->bad || b->len < HEADER || memcmp(b->p, ident, 5) || b->p[5] != SAVE_VERSION) {
+        free(b->p);
+        b->p = NULL;
+        return false;
+    }
+    return true;
+}
+
+bool save_describe(int slot, char desc[21])
+{
+    buf_t b;
+    if (!load_slot(slot, &b))
+        return false;
+    memcpy(desc, b.p + 6, 20);
+    desc[20] = 0;
+    free(b.p);
+    return true;
+}
+
+int save_level(int slot)
+{
+    buf_t b;
+    if (!load_slot(slot, &b))
+        return SAVE_NONE;
+    const int level = b.p[HEADER - 1];
+    free(b.p);
+    return level;
+}
+
+void save_delete(int slot)
+{
+    char name[16], path[1100];
+    slot_name(name, sizeof name, slot);
+    path_of(path, sizeof path, name);
+    if (enabled)
+        remove(path);
+}
+
+/* An object's number, read back as the object. */
+static obj_t *obj_ref(buf_t *b, obj_t **all, int count)
+{
+    const int n = (int16_t)get16(b);
+    return all && n >= 0 && n < count ? all[n] : NULL;
+}
+
+bool restore_game(int slot)
+{
+    buf_t b;
+    if (!load_slot(slot, &b) || !G.lv)
+        return false;
+    b.pos = HEADER;
+    if (b.p[HEADER - 1] != G.level) {
+        free(b.p);
+        return false;
+    }
+
+#define G8(x) ((x) = get8(&b))
+#define G16(x) ((x) = get16(&b))
+#define G32(x) ((x) = get32(&b))
+#define GBYTES(x, n) get(&b, (x), (n))
+    FIELDS(G8, G16, G32, GBYTES);
+    const int rows = get8(&b), cols = get8(&b);
+    if (rows != G.lv->rows || cols != G.lv->cols) {
+        free(b.p);
+        return false;
+    }
+    for (int i = 0; i < rows * cols; i++)
+        G.lv->bg[i] = get16(&b);
+    get(&b, G.lv->fg, (size_t)rows * cols);
+
+    game_clear_objects();
+    const int count = get16(&b);
+    obj_t **all = calloc((size_t)count + 1, sizeof *all);
+    for (int i = 0; all && i < count; i++)
+        all[i] = calloc(1, sizeof **all);
+    obj_t *tail[LIST_COUNT] = {0};
+    for (int i = 0; all && all[i] && i < count && !b.bad; i++) {
+        obj_t *o = all[i];
+        const int id = get8(&b);
+        o->list = get8(&b);
+        G16(o->priority); G16(o->blinks); G16(o->blink_ct); G16(o->draw_on); G16(o->draw_off);
+        G16(o->blink_color);
+        o->image = game_image((int16_t)get16(&b));
+        G16(o->flags); G8(o->xdir); G8(o->ydir); G16(o->x); G16(o->y); G16(o->xpart);
+        G16(o->ypart); G16(o->xspeed); G16(o->yspeed); G16(o->xsize); G16(o->ysize);
+        G16(o->update); G16(o->counter); G16(o->animator); G16(o->old_animator);
+        const int name = (int16_t)get16(&b);
+        o->name = name >= 0 && name < G.lv->object_count ? G.lv->objects[name].info : NULL;
+        G8(o->friction); G8(o->frame_no); G8(o->max_frames); G8(o->anim_inc);
+        G16(o->frame_count); G16(o->frame_count_max); G8(o->down_offset); G8(o->up_offset);
+        for (int k = 0; k < 6; k++)
+            G16(o->gv[k]);
+        G8(o->surface_flags);
+        o->child = obj_ref(&b, all, count);
+        o->parent = obj_ref(&b, all, count);
+        /* append, keeping the saved order */
+        if (id < LIST_COUNT) {
+            if (tail[id])
+                tail[id]->next = o;
+            else
+                G.list[id] = o;
+            tail[id] = o;
+        } else {
+            free(o);
+            all[i] = NULL;
+        }
+    }
+    G.you = obj_ref(&b, all, count);
+    G.boss = obj_ref(&b, all, count);
+    for (int i = 0; i < 5; i++)
+        G.neck[i] = obj_ref(&b, all, count);
+    G.hit_pts = obj_ref(&b, all, count);
+#undef G8
+#undef G16
+#undef G32
+#undef GBYTES
+    /* objects that didn't make it into a list (a short file) */
+    for (int i = 0; all && i < count; i++) {
+        bool linked = false;
+        for (int id = 0; id < LIST_COUNT && !linked; id++)
+            for (const obj_t *o = G.list[id]; o && !linked; o = o->next)
+                linked = o == all[i];
+        if (!linked)
+            free(all[i]);
+    }
+    free(all);
+    const bool ok = !b.bad;
+    free(b.p);
+    G.whip_hit_count = 0;
+    G.quitflag = 0;
+    G.looking = 0;
+    G.menu_coming = -1;
+    L.restore_x = G.org_x;
+    L.restore_y = G.org_y;
+    memcpy(L.save_pal, G.lv->palette, sizeof L.save_pal);
+    return ok;
+}

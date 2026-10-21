@@ -597,8 +597,8 @@ static void free_dead(void)
     }
 }
 
-/* RXTIMERF.C:12 LEVELTIMER: NEWLEVEL installs it to run every 0x24 ticks (16 a second). It
- * counts down the hit protection (bleeding meanwhile) and the attack's recovery, and makes
+/* RXTIMERF.C:12 LEVELTIMER: NEWLEVEL installs it with a rate of 0x0c, so it runs every 0x30
+ * ticks (12 a second). It counts down the hit protection (bleeding meanwhile) and the attack's recovery, and makes
  * spawned objects that went off screen kill themselves (OFFKILLER). */
 static void level_timer(void)
 {
@@ -664,7 +664,7 @@ void game_frame(uint16_t ticks)
      * ported.) */
     G.timer_ticks = (uint16_t)(G.timer_ticks + ticks);
     G.level_tics += ticks; /* (_TimerTics, for the level's clock) */
-    if (G.timer_ticks >= 0x24) {
+    if (G.timer_ticks >= LEVEL_TIMER_RATE * 4 && G.level < 0x1B) {
         G.timer_ticks = 0;
         level_timer();
     }
@@ -770,34 +770,13 @@ bool game_need_set(int base)
     return false;
 }
 
-static uint8_t difficulty = 2;
-
-/* What lasts from level to level besides the inventory: _GameFlags (the hero, bit 4, and the
- * hints' bits) and _OldGameFlags, the settings (status display, hints, blood, gamma) and the next
- * score bonus. game_end keeps them from the level being left, and game_start puts them back. */
-static struct {
-    uint16_t game_flags, old_game_flags;
-    uint8_t status_on, message_on, blood_on, gamma;
-    uint32_t next_score_up;
-} session;
-
-void game_new(bool male, uint8_t diff)
-{
-    difficulty = diff < 5 ? diff : 4;
-    session.game_flags = male ? 4 : 0;
-    session.old_game_flags = 0;
-    /* the defaults ROC.EXE starts with (ROC.CFG, not read, can change them) */
-    session.status_on = session.message_on = session.blood_on = 1;
-    session.gamma = 0;
-    /* GAMEINIT: an extra hit point every 10000 points (15000 on the hardest) */
-    session.next_score_up = difficulty == 4 ? 15000 : 10000;
-    /* A new game's inventory: 4 / 6 hit points (what the level-end and death code restore),
-     * the first whip and fireball. */
-    memset(&Inv, 0, sizeof Inv);
-    Inv.max_hit_points[0] = Inv.hit_points[0] = 4;
-    Inv.max_hit_points[1] = Inv.hit_points[1] = 6;
-    Inv.flags = 1 << 2 | 1 << 4;
-}
+/* The defaults ROC.EXE starts with: the status display, hints and blood on, _KeyTrans the arrow
+ * keys, Ctrl jump, Alt attack, Space the special item and Enter look (ROC.CFG can change them). */
+session_t Sess = {
+    .diff_mode = 2, .game_flags = 4, .status_on = 1, .message_on = 1, .blood_on = 1,
+    .next_score_up = 10000, .old_next_score_up = 10000,
+    .key_trans = {0x4B, 0x4D, 0x48, 0x50, 0x1D, 0x38, 0x39, 0x1C},
+};
 
 bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
 {
@@ -805,15 +784,16 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     G.lv = lv;
     G.level = (uint8_t)lv->number;
     G.seed = 1;
-    G.diff_mode = difficulty;
+    G.diff_mode = Sess.diff_mode;
     /* NEWLEVELSETUP keeps _GameFlags but for climbing, attacking and recovering */
-    G.game_flags = session.game_flags & 0xFFF4;
-    G.old_game_flags = session.old_game_flags & ~0x4000;
-    G.blood_on = session.blood_on;
-    G.status_on = session.status_on;
-    G.message_on = session.message_on;
-    G.gamma = session.gamma;
-    G.next_score_up = G.old_next_score_up = session.next_score_up;
+    G.game_flags = Sess.game_flags & 0xFFF4;
+    G.old_game_flags = Sess.old_game_flags & ~0x4000;
+    G.lightning_flag = Sess.lightning_flag;
+    G.blood_on = Sess.blood_on;
+    G.status_on = Sess.status_on;
+    G.message_on = Sess.message_on;
+    G.gamma = Sess.gamma;
+    G.next_score_up = G.old_next_score_up = Sess.next_score_up;
     G.next_second = 0x246;
     G.menu_coming = -1;
     G.cheat_attempt = 200; /* (the EXE starts it at 0x32, which only Backspace leaves) */
@@ -843,10 +823,7 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
     memcpy(G.level_pal, lv->palette, sizeof G.level_pal);
     G.max_x = (uint16_t)(lv->cols * TILE);
     G.max_y = (uint16_t)(lv->rows * TILE);
-    /* _KeyTrans as ROC.EXE has it (SETUP can change it in ROC.CFG): the arrow keys, Ctrl
-     * jump, Alt attack, Space the special item, Enter look. */
-    static const uint16_t keys[8] = {0x4B, 0x4D, 0x48, 0x50, 0x1D, 0x38, 0x39, 0x1C};
-    memcpy(G.key_trans, keys, sizeof keys);
+    memcpy(G.key_trans, Sess.key_trans, sizeof G.key_trans);
     /* NEWLEVELSETUP */
     G.window_xsize = 0x2A;
     G.center_off = 'V';
@@ -873,6 +850,33 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
         const uint16_t y = (uint16_t)(e->y - f0->img_yoff - 8);
         if (y <= lv->rows * TILE - 1)
             init_obj(f0, x, y, e->info);
+    }
+
+    /* NEWLEVELSETUP counts what PERCENTWIN shows of a level: the gems (tile type 0x71 one, 0x72
+     * five, in the background or a bonus tile) and secrets (0x74; one fewer on level 18), and
+     * the placed objects the weapons can hit: statues (priority 2) and enemies. */
+    if (G.level < 0x1B) {
+        for (int i = 0; i < lv->rows * lv->cols; i++) {
+            const uint16_t bt = lv->bg_type[lv->bg[i] & 0x1FF];
+            const uint8_t f = lv->fg[i];
+            const uint16_t ft = f & 0x80 ? 0 : lv->bon_type[f & 0x7F];
+            if (bt == 0x72 || ft == 0x72)
+                G.gem_in_level = (uint16_t)(G.gem_in_level + 5);
+            else if (bt == 0x71 || ft == 0x71)
+                G.gem_in_level++;
+            if (bt == 0x74)
+                G.secret_in_level++;
+        }
+        if (G.level == 0x12)
+            G.secret_in_level--;
+        for (const obj_t *o = G.list[LIST_MAIN]; o; o = o->next) {
+            if (o->flags & OF_HITTABLE) {
+                if (o->priority == 2)
+                    G.statue_in_level++;
+                else
+                    G.enemy_in_level++;
+            }
+        }
     }
 
     /* INITLEVEL: the ambient sound and camera objects, the hit points display and the gem
@@ -947,17 +951,29 @@ void game_view_on_player(void)
     G.window_ysize = 50;
 }
 
-void game_end(void)
+int game_image_index(const sprite_t *image)
 {
-    if (G.lv) {
-        session.game_flags = G.game_flags;
-        session.old_game_flags = G.old_game_flags;
-        session.status_on = G.status_on;
-        session.message_on = G.message_on;
-        session.blood_on = G.blood_on;
-        session.gamma = G.gamma;
-        session.next_score_up = G.next_score_up;
-    }
+    if (!image)
+        return -1;
+    for (int i = 0; i < IMG_COUNT; i++)
+        if (G.img[i] == image)
+            return i;
+    return -1;
+}
+
+const sprite_t *game_image(int index)
+{
+    if (index < 0 || index >= IMG_COUNT)
+        return NULL;
+    for (int k = 0; k < IMG_SETS && !G.img[index]; k++)
+        if (index >= image_sets[k].base && index < image_sets[k].base + image_sets[k].count)
+            game_need_set(image_sets[k].base);
+    return G.img[index];
+}
+
+void game_clear_objects(void)
+{
+    free_dead();
     for (int id = 0; id < LIST_COUNT; id++) {
         while (G.list[id]) {
             obj_t *o = G.list[id];
@@ -965,7 +981,26 @@ void game_end(void)
             free(o);
         }
     }
-    free_dead();
+}
+
+void game_keep_session(void)
+{
+    Sess.game_flags = G.game_flags;
+    Sess.old_game_flags = G.old_game_flags;
+    Sess.lightning_flag = G.lightning_flag;
+    Sess.status_on = G.status_on;
+    Sess.message_on = G.message_on;
+    Sess.blood_on = G.blood_on;
+    Sess.gamma = G.gamma;
+    Sess.next_score_up = G.next_score_up;
+    Sess.diff_mode = G.diff_mode;
+}
+
+void game_end(void)
+{
+    if (G.lv)
+        game_keep_session();
+    game_clear_objects();
     free(G.torch_change);
     for (int i = 0; i < IMG_SETS; i++)
         spriteset_free(&G.sets[i]);

@@ -54,8 +54,9 @@ typedef struct {
     mask_tiles_t fg_tiles, bon_tiles;
 } level_t;
 
+/* `led` names another map for the level (the easy ones), or is NULL. */
 bool level_load(level_t *lv, const archive_t *arc, const level_list_t *list, int number,
-                char *err, size_t errlen);
+                const char *led, char *err, size_t errlen);
 void level_free(level_t *lv);
 
 /* Draw the map with its top left corner at map pixel (cam_x, cam_y). */

@@ -21,6 +21,10 @@
 /* Timer: _MachInit calls _speedup(0x20), so the timer task runs at 32 x 18.2 Hz and adds
  * _TicAmt (1 while the game runs) to _TimerTics each time. */
 #define TICKS_PER_SECOND (1193182.0 / (int)(1193182.0 / 582.4))
+/* INSTALLTIMER rates are in fours of ticks (the timer task counts the timers every fourth run):
+ * NEWLEVEL installs LEVELTIMER at 0x0c (about 12 runs a second) and the title's TITLETIMER at
+ * 0x24. */
+enum { LEVEL_TIMER_RATE = 0x0C, TITLE_TIMER_RATE = 0x24 };
 
 enum { LIST_MAIN, LIST_FORE, LIST_SLOW, LIST_OFF, LIST_COUNT };
 
@@ -173,6 +177,7 @@ typedef struct {
     obj_t *whip_hits[8];         /* DS:553b: objects this crack of the whip has hit */
     uint8_t whip_hit_count;      /* DS:553a */
     uint16_t secret_found, gem_found, enemy_found, statue_found, enemy_in_level;
+    uint16_t gem_in_level, secret_in_level, statue_in_level; /* _GemInLevel... (NEWLEVELSETUP) */
     uint8_t monster_counter, monster_number, max_monster_number;
     uint8_t monster_spawns;      /* DS:38da: GRABSTUFF's spawns from one tile (3 clear it) */
     uint16_t warp[10][2];        /* _WarpCoords: castle1 / castle2 tile types 10-19 */
@@ -203,11 +208,29 @@ typedef struct {
 
 extern game_t G;
 
+/* What outlives a level (the original's globals NEWLEVELSETUP leaves alone): G holds them while
+ * a level runs; game_start takes them from here and game_end puts them back. */
+typedef struct {
+    uint8_t diff_mode;           /* _DiffMode: 0 Super Easy ... 4 Psycho Warrior */
+    uint16_t game_flags;         /* _GameFlags: bit 2 the male hero, the hints' bits */
+    uint16_t old_game_flags;     /* _OldGameFlags: the hints already shown */
+    int8_t lightning_flag;       /* _LightningFlag: 1 when a new game starts (the hero arrives in
+                                  * lightning) */
+    uint8_t status_on, message_on, blood_on, gamma; /* the settings (ROC.CFG) */
+    char blood_pass[20];         /* _BloodPass (ROC.CFG) */
+    uint32_t next_score_up, old_next_score_up;
+    uint16_t key_trans[8];       /* _KeyTrans (ROC.CFG) */
+} session_t;
+
+extern session_t Sess;
+
 /* Start a level: load the sprite sets its object list names and create the objects
  * (LOADOBJ / INITOBJ / INITLEVEL's part for the level objects). */
-void game_new(bool male, uint8_t difficulty);       /* a new game: character, _DiffMode 0-4,
-                                                     * inventory */
 bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen);
+void game_keep_session(void);                       /* copy G's lasting state to Sess */
+void game_clear_objects(void);                      /* free every object */
+int game_image_index(const sprite_t *image);        /* _Img index of a frame, or -1 */
+const sprite_t *game_image(int index);              /* _Img[index], loading its set */
 void game_end(void);
 void game_view_on_player(void);                     /* NEWLEVEL's starting view */
 bool game_need_set(int base);                       /* load an IMG_ set if the level didn't */

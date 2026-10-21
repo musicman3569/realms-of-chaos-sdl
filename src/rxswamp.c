@@ -312,7 +312,7 @@ int frog_land(obj_t *o)
  * every move ripples down the neck 90 runs a segment later. The necks keep within 12 pixels of
  * their neighbours and space themselves evenly between the head and the body
  * (GenericVar[4] is a fifth of the head's distance from x 0x193). */
-static int8_t dragon_move[4][180];
+int8_t dragon_move[4][180]; /* (not static: saved games keep it) */
 
 static void keep_player_between(uint16_t left, uint16_t right)
 {
