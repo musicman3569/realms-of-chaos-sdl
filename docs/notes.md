@@ -152,7 +152,8 @@ The format details are in that script's docstring. In short:
   tiles, plane by plane, as `(op, count)` pairs (0 skip, 1/2/3 write both/left/right byte,
   4 next plane, 5 end).
 - **Levels** (`LOADLEVEL` in LOADLEV.C, drawn by `FUN_3cb4_0d58`): background cell =
-  `value & 0x1ff` into bg layers 1-3 (240 tiles each) plus flag bits 9-14 (not decoded yet);
+  `value & 0x1ff` into bg layers 1-3 (240 tiles each) plus flag bits 9-14 (see "Tiles: types and
+  collision");
   foreground byte = 0 or a 7-bit tile index, from `.mfg` if bit 7 is set and `.mbg` if not.
   The foreground map is an `FGMAP`: a u16 `Cols`, then the table (LOADLEVEL reads
   Rows*Cols + 3 bytes, so one spare byte follows). Reading the table from offset 3 instead
@@ -160,8 +161,8 @@ The format details are in that script's docstring. In short:
   the gaps), which the port did at first.
 - Level *n* uses `name[n].led` and the tile set `name[set[n]]`, where the names come from
   `roclevel.txt` and `set[]` is a 29-byte table at DS:033e (e.g. forest2 uses forest1's tiles).
-- Each `.led` ends with 0x600 bytes that `LOADLEVEL` doesn't appear to read (after its
-  0x400/0x100/0x100 tables). Not identified yet.
+- Each `.led` ends with 0x600 bytes that `LOADLEVEL` doesn't read (after its 0x400/0x100/0x100
+  type tables): the level editor's default flags per tile, in the same layout (see "Tiles").
 
 Source modules (from the line-number table): the game is `RX*.C` plus `rocxms.asm`,
 `rocport.asm` and `rocfile.asm`; the engine is `SPRITE.C`, `MOVE.C`, `ANIMTILE.C`,
@@ -1047,10 +1048,63 @@ move, MOVE.C checks the cells entered and calls `_Grabber` (GRABSTUFF) for those
 
 **Tile types.** After the object list each `.led` holds three word tables: 512 for the
 background tiles (by `BgMap & 0x1ff`), 128 for the foreground tiles and 128 for the bonus
-tiles. LOADLEVEL reads them into segment 469b at 17c0, 16c0 and 15c0 (not DGROUP). The 0x600
-bytes after them are still unread. `CANMOVE` (RXGENERL.C:264) uses the low byte of the type
+tiles. LOADLEVEL reads them into segment 469b at 17c0, 16c0 and 15c0 (not DGROUP). `CANMOVE` (RXGENERL.C:264) uses the low byte of the type
 under the middle of an object's feet: 200-212 are slopes whose surface height per pixel
 column is `_slope[k - 200][16]` (DGROUP:00df); it sets `UpOffset` (standing below the
 slope's surface) and `DownOffset` (1: can fall, 11: the surface is one pixel below).
 GRABSTUFF (RXGRABF.C) reacts to other values (see "Grabbing" above).
 
+**The flag bits, all of them.** 0x200-0x1000 are the four collision bits and 0x2000 the grab bit
+above. Bit 14 (0x4000) is set on a few hundred cells of the forest maps only (forest1, forests,
+frsteasy) and nothing in ROC.EXE tests it: a scan of every instruction for 0x4000 / `AH, 40h`
+finds only other flags (`_GameFlags`, `_OldGameFlags`, file modes). Bit 15 is never set. The 0x600
+bytes at the end of each `.led` (after the type tables, never read by LOADLEVEL) have the type
+tables' layout, 512 + 128 + 128 words, and hold flag values: 0x1e00 (all four walls), 0x800 (a
+floor), 0x2000 (grabbable), 0x600, 0xe00, 0x2600, and in forest1 0x4000. They look like the level
+editor's default flags for each tile, which it would stamp into a cell with the tile; the game only
+reads the cells' own bits. So no flag work was left for the port beyond what it already did.
+
+## Animated tiles
+
+Water, waterfalls, torches, gems' glints and lava are map cells whose tile is stepped round a cycle
+of frames (ANIMTILE.C, assembly at 3b52; no debug info inside).
+
+**Setting up** (NEWLEVELSETUP calls SETUPHANDLES, RXNEWLVF.C:449, after the level's counts and
+before RESTOREGAME / INITLEVEL; a CS jump table at 250e:1731 by level). Three cdecl makers, each
+`(rate, count, frame, ...)`: `_AnimateBack` (background cells, matched on `& 0x1ff`),
+`_AnimateFore` (foreground bytes with bit 7: it ORs 0x80 into its frames) and `_AnimateMask`
+(bonus bytes, bit 7 clear). Each `ALLOCNEAR`s a node (kind 0 / 1 / 1 at +0, rate +2, count +4,
+counter +6, then 100 cell numbers from +0xa ending at a 0, then the frames at +0xd2), records
+every map cell showing any of its frames (a frame listed twice records the cell twice; the 100th
+cell is a fatal error), and goes in `_AnimHandle[_NextAnim++]` (32 slots). The background frames
+come from `_AnTil[23][3]` (DS:39a0), which INITANTIL (LOADLEV.C:321, table at 38d2:0efa) fills
+per level group at the start of LOADLEVEL (600 meaning none) so that TILEBUFFOPTI renumbers them
+with the map. NEWLEVEL frees them all (DEANIMATE) when the level ends.
+
+| Levels                     | Animations                                                                  |
+|----------------------------|-----------------------------------------------------------------------------|
+| 0-2 (forest)               | 7 back x 3 frames, rate 0x23; mask 19/2d/41/55 and 1a/2e/42/56, rate 10      |
+| 3, 4, 13, 21 (caves)       | 19 back x 3, rate 0x13; 4 back x 2, rate 0x3c; mask 3c/50/64/78, 3d/51/65/79 |
+| 5-7 (castle)               | mask 72-76 (5 frames, rate 0x13); mask 28/3c/50/64, 29/3d/51/65             |
+| 8, 9 (swamp)               | mask 0c/20/34/70, 73/74/75/76                                                |
+| 11, 12 (mushrooms)         | 2 back x 4, rate 10; mask 3c/50/64/78, 3d/51/65/79                          |
+| 14, 15, 22-24              | mask 28/3c/50/64, 29/3d/51/65; 17 back x 3, rate 0x13                       |
+| 17-20 (dead lands)         | mask 12/26/3a/4e, 13/27/3b/4f                                               |
+| 25 (demon)                 | 6 back x 8 frames, rate 0x13                                                |
+| 26 (secret1)               | the caves' two masks; 9 fore x 2 frames (5b-63 / 6f-77) at rates 0xf-0x14  |
+| 10, 16, 27, 28             | none                                                                         |
+
+Masks without a rate given run at 10. **Clocking**: the timer task (1000:c5d3) calls 1000:c607
+at each of its 582 ticks a second while `_LevelRunning` and `_TicAmt`; at every fourth
+(`_AnimCounter`) it adds one to each animation's counter, so a rate is in fours of ticks (0x13: a
+step every 76 ticks; 10: every 40). **RUNANIMTILES** (3b52:042f), once a frame between RUNTIMERS
+and ANIMATORUPDATE: an animation whose counter reached its rate sets it to 0 and moves each cell
+from the frame it shows to the next (the last to the first; flags kept), leaving cells that show
+none of them (a gem taken) alone, and MAPUPDATEs the cells inside the view. Not every frame
+SETUPHANDLES names is in every map (forest2 uses none of the forest's background ones), which is
+the same in the original.
+
+**The port** (`src/animtile.c`): the same nodes, set up by `game_start` after the counts, counted
+in `game_frame` and stepped before the objects run; the port redraws the whole view each frame, so
+there's no MAPUPDATE. A restored game's maps replace the level's after the setup, as in the
+original, and the cells' positions are the same.

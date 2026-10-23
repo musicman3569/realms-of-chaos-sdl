@@ -419,6 +419,19 @@ still time every sound, so the game behaves as it does with sound.
   third to half of the effects' loudness (OPL_GAIN 3, a judgment), and the game runs with music
   on SDL's dummy audio and video drivers; headless runs are unchanged. Not built on Linux or
   macOS yet, and not heard by a person yet.
+- Port, the animated tiles and the background flags (notes "Animated tiles" and "Tiles"): new
+  `src/animtile.c` with ANIMTILE.C's `_AnimateBack`, `_AnimateFore`, `_AnimateMask`,
+  RUNANIMTILES and DEANIMATE, the timer task's counting (a step of each counter every 4 ticks),
+  INITANTIL's `_AnTil` frames and SETUPHANDLES' per-level animations (water, waterfalls, torches,
+  gems' glints, lava, secret1's foreground cycles). Read from the raw assembly (its near jumps are
+  mis-segmented in Ghidra) and the two CS jump tables. The flags: bit 14 of the background cells
+  is never tested by ROC.EXE (only some forest cells have it), bit 15 is never set, and the 0x600
+  bytes at the end of each `.led` are the level editor's per-tile default flags, which LOADLEVEL
+  never reads; so the port's collision and grab bits were already complete. Verified headless:
+  every level's animations find their cells (the caves' 19 + 4 background cycles, goblin2's 9
+  torch cells, the castle's gems...); on goblin2 the torches' flames and the gems' glints change
+  between ticks 100 and 180; save and load on goblin2 work; a sweep of all 27 levels with both
+  heroes is clean. Not compared frame by frame with DOSBox.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -426,11 +439,9 @@ still time every sound, so the game behaves as it does with sound.
 
 ## Next steps
 
-1. **Background flags** (next): bits 9-14 of background cells (probably collision/animation; see
-   `RUNANIMTILES`, `ANIMTILE.C`) and the 0x600 bytes at the end of each `.led`. Bits 9-12
-   are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
-2. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
+1. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
    `MyBUTTON` keys); the original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
    reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the OPL3 stereo paths of
    AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
-   Linux and macOS; the interactive window and the sound haven't been tried by a person yet.
+   Linux and macOS; the interactive window, the sound and the animated tiles haven't been tried by
+   a person yet.

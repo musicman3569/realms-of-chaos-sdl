@@ -660,15 +660,16 @@ int off_killer(obj_t *o)
 
 void game_frame(uint16_t ticks)
 {
-    /* RUNLEVEL's loop: RUNTIMERS (LEVELTIMER), then ANIMATORUPDATE(_Update) runs the main and
-     * foreground lists once per tick and the slow list once per frame. (RUNANIMTILES isn't
-     * ported.) */
+    /* RUNLEVEL's loop: RUNTIMERS (LEVELTIMER), RUNANIMTILES, then ANIMATORUPDATE(_Update) runs
+     * the main and foreground lists once per tick and the slow list once per frame. */
     G.timer_ticks = (uint16_t)(G.timer_ticks + ticks);
     G.level_tics += ticks; /* (_TimerTics, for the level's clock) */
+    animtile_tick(ticks);
     if (G.timer_ticks >= LEVEL_TIMER_RATE * 4 && G.level < 0x1B) {
         G.timer_ticks = 0;
         level_timer();
     }
+    animtile_run();
     G.update = ticks;
     int r = 0;
     for (uint16_t t = 0; t < ticks && !r; t++)
@@ -882,6 +883,8 @@ bool game_start(level_t *lv, const archive_t *arc, char *err, size_t errlen)
             }
         }
     }
+    /* SETUPHANDLES: the level's animated tiles */
+    animtile_setup();
 
     /* INITLEVEL: the ambient sound and camera objects, the hit points display and the gem
      * counter (a gem and four digits); then each level's own objects: the scrollers, the
@@ -1006,6 +1009,7 @@ void game_end(void)
     if (G.lv)
         game_keep_session();
     game_clear_objects();
+    animtile_free();
     free(G.torch_change);
     for (int i = 0; i < IMG_SETS; i++)
         spriteset_free(&G.sets[i]);

@@ -12,6 +12,7 @@ add_executable(roc
     src/gfx.c
     src/level.c
     src/engine.c
+    src/animtile.c
     src/setup.c
     src/behave.c
     src/rxgenerl.c

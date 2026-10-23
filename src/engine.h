@@ -239,6 +239,12 @@ void game_view_on_player(void);                     /* NEWLEVEL's starting view 
 bool game_need_set(int base);                       /* load an IMG_ set if the level didn't */
 void spawn_hints(void);                             /* SPAWNHINTS (rxgenerl.c) */
 
+/* Animated tiles (animtile.c) */
+void animtile_setup(void);                          /* INITANTIL + SETUPHANDLES for G.level */
+void animtile_tick(uint16_t ticks);                 /* the timer task's counting */
+void animtile_run(void);                            /* RUNANIMTILES: step the due cells */
+void animtile_free(void);                           /* DEANIMATE them all */
+
 /* One frame of RUNLEVEL: run the animators for `ticks` timer ticks (ANIMATORUPDATE), then
  * move objects between the on- and off-screen lists (SCREENLISTUPDATE). */
 void game_frame(uint16_t ticks);
