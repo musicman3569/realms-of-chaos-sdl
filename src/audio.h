@@ -1,11 +1,11 @@
 /* The sound devices, in place of the Apogee Sound System (SOURCE\*.C): FX_* plays digitised
- * sound effects on a few voices, MUSIC_* plays a MIDI song.
+ * sound effects on a few voices, MUSIC_* plays a MIDI song on an AdLib.
  *
- * Effects are mixed by the port (SDL2 audio). In a headless run, or when there's no audio
- * device, the mixer still runs, advanced by the game's ticks, so a sound lasts as long as it
- * would and the game (which waits for sounds to end) runs the same; nothing is heard. Music goes
- * to the system's MIDI synthesiser (on Windows, the MIDI mapper through winmm; elsewhere there's
- * none yet). */
+ * Both are mixed by the port in the SDL2 audio callback: the effects' samples, and the music
+ * as the original's AdLib driver plays it (almidi.c) on an emulated OPL2 (opl.c). In a headless
+ * run, or when there's no audio device, the effects' mixer still runs, advanced by the game's
+ * ticks, so a sound lasts as long as it would and the game (which waits for sounds to end) runs
+ * the same; nothing is heard, and there's no music. */
 #ifndef ROC_AUDIO_H
 #define ROC_AUDIO_H
 
@@ -14,12 +14,14 @@
 #include <stdint.h>
 
 /* `device`: open the audio device (else the mixer runs silently, see audio_advance); `music`:
- * open the MIDI synthesiser. */
+ * start the AdLib (al_load_tables must have read the driver's tables). */
 bool audio_init(bool device, bool music, int voices);
 void audio_shutdown(void);
 /* A silent mixer moves on by `ticks` timer ticks (host_frame calls it when there's no device). */
 void audio_advance(int ticks);
 bool audio_has_device(void);
+/* Mix the next `frames` stereo frames into out (with no device: tests). */
+void audio_render(int16_t *out, int frames);
 
 /* A sound effect: 8-bit unsigned PCM at `rate` Hz (a VOC file's first sound block). */
 typedef struct {

@@ -1,20 +1,17 @@
-/* The sound devices (see audio.h): an SDL2 mixer for the effects, a MIDI sequencer for the
- * music. */
+/* The sound devices (see audio.h): an SDL2 mixer for the effects and the music, which a MIDI
+ * sequencer plays on the AdLib driver (almidi.c) and the OPL2 emulator (opl.c), all inside the
+ * audio callback. */
 #include "audio.h"
 
+#include "almidi.h"
 #include "engine.h"
+#include "opl.h"
 
 #include <SDL.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <mmsystem.h>
-#endif
 
 enum { MIX_RATE = 44100, MAX_VOICES = 32 };
 
@@ -84,14 +81,16 @@ static void mix(int16_t *out, int n)
     }
 }
 
+static void music_mix(int16_t *out, int n);
+
 static void SDLCALL callback(void *user, Uint8 *stream, int len)
 {
     (void)user;
     mix((int16_t *)stream, len / 4);
+    music_mix((int16_t *)stream, len / 4);
 }
 
-static bool midi_open(void);
-static void midi_close(void);
+static void music_open(void);
 
 bool audio_init(bool device, bool music, int voices)
 {
@@ -114,13 +113,12 @@ bool audio_init(bool device, bool music, int voices)
         }
     }
     if (music)
-        midi_open();
+        music_open();
     return A.device;
 }
 
 void audio_shutdown(void)
 {
-    midi_close();
     if (A.device) {
         SDL_CloseAudioDevice(A.dev);
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
@@ -284,150 +282,31 @@ int fx_voices_playing(void)
 }
 
 /* ------------------------------------------------------------------------------------------ */
-/* Music: a standard MIDI file played on the system's synthesiser                             */
+/* Music: MIDI.C's sequencer on the AdLib driver and the OPL2, in the audio callback          */
 
 typedef struct {
     uint64_t us;                 /* from the song's start */
     uint8_t status, d1, d2, len; /* a channel message of len bytes */
 } midi_event_t;
 
+enum { OPL_GAIN = 3 };          /* the OPL's output against the effects' (a judgment: songs at about
+                                 * a third to half of the effects' loudness) */
+
 static struct {
-    SDL_mutex *lock;
-    SDL_Thread *thread;
-    volatile bool quit;
+    bool open;                   /* the AdLib driver is there */
     midi_event_t *ev;
     size_t count, next;
     uint64_t length_us;
     bool playing, paused;
-    uint64_t start;              /* performance counter at the song's time 0 */
-    uint64_t paused_at;
+    double pos_us;               /* the song's time */
     int volume;                  /* MUSIC_SetVolume: 0-255 */
-    int fade_from, fade_to, fade_ms;
-    uint64_t fade_start;
+    int fade_from, fade_to;
+    double fade_us, fade_done_us;
     bool fading;
-    int sent_volume;             /* the volume the channels' CC 7 were last scaled to */
-    uint8_t chan_vol[16];        /* each channel's CC 7 as the song set it */
-#ifdef _WIN32
-    HMIDIOUT out;
-#endif
-    bool open;
-} M = {.volume = 255, .sent_volume = -1};
-
-static uint64_t now_us(void)
-{
-    return SDL_GetPerformanceCounter() * 1000000 / SDL_GetPerformanceFrequency();
-}
-
-static void midi_send(uint8_t status, uint8_t d1, uint8_t d2)
-{
-#ifdef _WIN32
-    if (M.out)
-        midiOutShortMsg(M.out, (DWORD)status | (DWORD)d1 << 8 | (DWORD)d2 << 16);
-#else
-    (void)status;
-    (void)d1;
-    (void)d2;
-#endif
-}
-
-static void notes_off(void)
-{
-    for (int c = 0; c < 16; c++) {
-        midi_send((uint8_t)(0xB0 | c), 0x40, 0);   /* sustain off */
-        midi_send((uint8_t)(0xB0 | c), 0x7B, 0);   /* all notes off */
-    }
-}
-
-/* The volume now (MUSIC_SetVolume, or where a fade has got to). */
-static int current_volume(uint64_t now)
-{
-    if (!M.fading)
-        return M.volume;
-    const uint64_t done = (now - M.fade_start) / 1000;
-    if (done >= (uint64_t)M.fade_ms) {
-        M.fading = false;
-        M.volume = M.fade_to;
-        return M.volume;
-    }
-    return M.fade_from + (int)((M.fade_to - M.fade_from) * (int64_t)done / M.fade_ms);
-}
-
-static void send_volumes(int volume)
-{
-    if (volume == M.sent_volume)
-        return;
-    M.sent_volume = volume;
-    for (int c = 0; c < 16; c++)
-        midi_send((uint8_t)(0xB0 | c), 7, (uint8_t)(M.chan_vol[c] * volume / 255));
-}
-
-static int SDLCALL midi_thread(void *user)
-{
-    (void)user;
-    while (!M.quit) {
-        SDL_LockMutex(M.lock);
-        const uint64_t now = now_us();
-        if (M.playing && !M.paused && M.count) {
-            send_volumes(current_volume(now));
-            const uint64_t t = now - M.start;
-            while (M.next < M.count && M.ev[M.next].us <= t) {
-                const midi_event_t *e = &M.ev[M.next++];
-                if ((e->status & 0xF0) == 0xB0 && e->d1 == 7) {
-                    /* the song's channel volume, scaled to the music volume */
-                    M.chan_vol[e->status & 0x0F] = e->d2;
-                    midi_send(e->status, 7, (uint8_t)(e->d2 * M.sent_volume / 255));
-                } else {
-                    midi_send(e->status, e->d1, e->d2);
-                }
-            }
-            if (M.next >= M.count && t >= M.length_us) {
-                /* MUSIC_PlaySong(song, loop): again from the start */
-                notes_off();
-                M.next = 0;
-                M.start = now;
-            }
-        }
-        SDL_UnlockMutex(M.lock);
-        SDL_Delay(1);
-    }
-    return 0;
-}
-
-static bool midi_open(void)
-{
-#ifdef _WIN32
-    if (midiOutOpen(&M.out, MIDI_MAPPER, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
-        M.out = NULL;
-        fprintf(stderr, "roc: no MIDI output, so no music\n");
-        return false;
-    }
-    M.lock = SDL_CreateMutex();
-    M.quit = false;
-    M.thread = SDL_CreateThread(midi_thread, "music", NULL);
-    M.open = M.lock && M.thread;
-    return M.open;
-#else
-    return false;
-#endif
-}
-
-static void midi_close(void)
-{
-    if (!M.open)
-        return;
-    M.quit = true;
-    SDL_WaitThread(M.thread, NULL);
-    notes_off();
-#ifdef _WIN32
-    midiOutReset(M.out);
-    midiOutClose(M.out);
-#endif
-    SDL_DestroyMutex(M.lock);
-    free(M.ev);
-    memset(&M, 0, sizeof M);
-    M.volume = 255;
-    M.sent_volume = -1;
-}
+    int applied;                 /* the volume MIDI_SetVolume was last given */
+    double opl_pos;              /* resampling: where between two OPL samples */
+    int opl_prev, opl_next;
+} M = {.volume = 255, .applied = -1};
 
 static uint32_t be32(const uint8_t *p)
 {
@@ -463,7 +342,8 @@ static int raw_cmp(const void *a, const void *b)
 }
 
 /* Read a format 0 or 1 MIDI file into events timed in microseconds. */
-static bool midi_parse(const uint8_t *d, size_t len)
+static bool midi_parse(const uint8_t *d, size_t len, midi_event_t **events, size_t *n_events,
+                       uint64_t *length_us)
 {
     if (len < 14 || memcmp(d, "MThd", 4))
         return false;
@@ -552,77 +432,147 @@ static bool midi_parse(const uint8_t *d, size_t len)
         ev[count++] = (midi_event_t){us, raw[i].status, raw[i].d1, raw[i].d2, raw[i].len};
     }
     free(raw);
-    free(M.ev);
-    M.ev = ev;
-    M.count = count;
-    M.length_us = us;
+    *events = ev;
+    *n_events = count;
+    *length_us = us;
     return true;
+}
+
+static void music_open(void)
+{
+    al_init();
+    M.open = true;
+}
+
+/* The volume now: MUSIC_SetVolume's, or where a fade has got to. */
+static int current_volume(void)
+{
+    if (!M.fading)
+        return M.volume;
+    if (M.fade_done_us >= M.fade_us) {
+        M.fading = false;
+        M.volume = M.fade_to;
+        return M.volume;
+    }
+    return M.fade_from + (int)((M.fade_to - M.fade_from) * M.fade_done_us / M.fade_us);
+}
+
+/* The music's n frames, added to out: the song's events at their time (looping at its end),
+ * the volume (MIDI_SetVolume, as it changes), the OPL's samples resampled to the mixer's rate. */
+static void music_mix(int16_t *out, int n)
+{
+    if (!M.open)
+        return;
+    const double frame_us = 1000000.0 / MIX_RATE;
+    for (int i = 0; i < n; i++) {
+        if (M.playing && !M.paused) {
+            if (M.fading)
+                M.fade_done_us += frame_us;
+            if ((i & 0x3F) == 0) {
+                const int v = current_volume();
+                if (v != M.applied) {
+                    M.applied = v;
+                    midi_set_volume(v);
+                }
+            }
+            while (M.next < M.count && M.ev[M.next].us <= M.pos_us) {
+                const midi_event_t *e = &M.ev[M.next++];
+                midi_event(e->status, e->d1, e->d2);
+            }
+            M.pos_us += frame_us;
+            if (M.next >= M.count && M.pos_us >= M.length_us) {
+                /* MUSIC_PlaySong(song, loop): again from the start */
+                M.next = 0;
+                M.pos_us = 0;
+            }
+        }
+        M.opl_pos += (double)OPL_RATE / MIX_RATE;
+        while (M.opl_pos >= 1.0) {
+            M.opl_pos -= 1.0;
+            M.opl_prev = M.opl_next;
+            M.opl_next = opl_sample();
+        }
+        int32_t v = M.opl_prev + (int32_t)((M.opl_next - M.opl_prev) * M.opl_pos);
+        v = out[i * 2] + v * OPL_GAIN;
+        v = v > 32767 ? 32767 : v < -32768 ? -32768 : v;
+        out[i * 2] = out[i * 2 + 1] = (int16_t)v;
+    }
+}
+
+void audio_render(int16_t *out, int frames)
+{
+    memset(out, 0, (size_t)frames * 4);
+    lock();
+    mix(out, frames);
+    music_mix(out, frames);
+    unlock();
 }
 
 void music_play(const uint8_t *mid, size_t len)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
-    notes_off();
-    M.playing = false;
-    if (midi_parse(mid, len)) {
-        for (int c = 0; c < 16; c++) {
-            M.chan_vol[c] = 100;
-            midi_send((uint8_t)(0xB0 | c), 0x79, 0); /* reset the controllers */
-        }
-        M.sent_volume = -1;
-        M.next = 0;
-        M.start = now_us();
-        M.paused = false;
-        M.playing = true;
-    }
-    SDL_UnlockMutex(M.lock);
+    midi_event_t *ev;
+    size_t count;
+    uint64_t length;
+    if (!midi_parse(mid, len, &ev, &count, &length))
+        return;
+    lock();
+    free(M.ev);
+    M.ev = ev;
+    M.count = count;
+    M.length_us = length;
+    midi_reset();
+    M.applied = -1;
+    M.next = 0;
+    M.pos_us = 0;
+    M.paused = false;
+    M.playing = true;
+    unlock();
 }
 
 void music_stop(void)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
+    lock();
     M.playing = false;
     M.fading = false;
-    notes_off();
-    SDL_UnlockMutex(M.lock);
+    midi_all_notes_off();
+    unlock();
 }
 
 void music_set_volume(int volume)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
+    lock();
     M.volume = volume < 0 ? 0 : volume > 255 ? 255 : volume;
     M.fading = false;
-    SDL_UnlockMutex(M.lock);
+    unlock();
 }
 
 void music_fade(int to, int ms)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
-    const uint64_t now = now_us();
-    M.fade_from = current_volume(now);
+    lock();
+    M.fade_from = current_volume();
     M.fade_to = to;
-    M.fade_ms = ms > 0 ? ms : 1;
-    M.fade_start = now;
+    M.fade_us = (ms > 0 ? ms : 1) * 1000.0;
+    M.fade_done_us = 0;
     M.fading = true;
-    SDL_UnlockMutex(M.lock);
+    unlock();
 }
 
 bool music_fade_active(void)
 {
     if (!M.open)
         return false;
-    SDL_LockMutex(M.lock);
-    current_volume(now_us());
+    lock();
+    current_volume();
     const bool f = M.fading;
-    SDL_UnlockMutex(M.lock);
+    unlock();
     return f;
 }
 
@@ -635,23 +585,19 @@ void music_pause(void)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
+    lock();
     if (M.playing && !M.paused) {
         M.paused = true;
-        M.paused_at = now_us();
-        notes_off();
+        midi_all_notes_off();
     }
-    SDL_UnlockMutex(M.lock);
+    unlock();
 }
 
 void music_continue(void)
 {
     if (!M.open)
         return;
-    SDL_LockMutex(M.lock);
-    if (M.paused) {
-        M.paused = false;
-        M.start += now_us() - M.paused_at;
-    }
-    SDL_UnlockMutex(M.lock);
+    lock();
+    M.paused = false;
+    unlock();
 }

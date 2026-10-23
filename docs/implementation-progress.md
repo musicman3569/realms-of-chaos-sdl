@@ -111,9 +111,9 @@ last shown. Objects whose behaviour isn't ported stay still, and each such anima
 once on stderr. Headless runs print the level, the player's position and animator, the
 inventory and the level's counters (found / in the level) at the end.
 
-Sound: effects through SDL2 audio, music through the system's MIDI synthesiser (Windows: the
-MIDI mapper, usually the Microsoft GS Wavetable Synth). `--no-sound` and `--no-music` turn them
-off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
+Sound: effects and music through SDL2 audio on every platform; the music is the original's AdLib
+driver on an emulated OPL2, so it sounds as it did on an AdLib or Sound Blaster. `--no-sound`
+and `--no-music` turn them off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
 still time every sound, so the game behaves as it does with sound.
 
 ## Completed
@@ -405,6 +405,20 @@ still time every sound, so the game behaves as it does with sound.
   0) through play, fade, pause and stop; all 18 songs parse; the sound menu's sliders move in
   steps of 16; the game-loop scripts and sweeps of all 27 levels (both heroes) are clean. Not
   heard by a person yet.
+- Port, the AdLib music (notes "The AdLib music"): new `src/opl.c`, an OPL2 (YM3812) emulator
+  written for the port (log-sine and exponent tables, the envelope rates, key scaling, the four
+  waveforms, feedback, tremolo and vibrato; no rhythm mode, which the driver doesn't use), new
+  `src/almidi.c`, Apogee's AL_MIDI driver and MIDI.C's volume layer read from the machine code
+  (voice allocation, AL_SetVoiceTimbre / Volume / Pitch, the drum map, pitch bend, controllers
+  7, 10, 94, 121, 123), with `_ADLIB_TimbreBank` (256 instruments), the drum map and the pitch
+  tables read from ROC.EXE; `src/audio.c` runs the song's events inside the SDL audio callback,
+  sample-accurately, and resamples the chip's 49716 Hz to 44.1 kHz. winmm is gone: the port
+  needs nothing but SDL2 on Windows, Linux or macOS (CMake links libm off Windows). Verified
+  with a scratch renderer through the same code: a flute's A4 sounds at 437.5 Hz (the driver's
+  table gives 437.7: Apogee tuned a little flat), the songs render without clipping at about a
+  third to half of the effects' loudness (OPL_GAIN 3, a judgment), and the game runs with music
+  on SDL's dummy audio and video drivers; headless runs are unchanged. Not built on Linux or
+  macOS yet, and not heard by a person yet.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -417,6 +431,6 @@ still time every sound, so the game behaves as it does with sound.
    are the collision flags and 13 (0x2000) marks grabbable tiles (notes, "Tiles").
 2. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
    `MyBUTTON` keys); the original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
-   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); music on systems without winmm
-   (a software synthesiser, or the songs' AdLib sound); the interactive window and the sound
-   haven't been tried by a person yet (only headless runs and scratch tests).
+   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the OPL3 stereo paths of
+   AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
+   Linux and macOS; the interactive window and the sound haven't been tried by a person yet.

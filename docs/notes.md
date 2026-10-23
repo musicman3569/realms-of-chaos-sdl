@@ -533,9 +533,50 @@ Esc or the jump key.
 **The port** (`src/audio.c`, `src/sound.c`): effects are mixed with SDL2 (44.1 kHz, linear
 interpolation; with no free voice the oldest of the lowest priority is taken, and all play at
 priority 7); without a device the mixer is advanced by the game's ticks, so sounds last as long
-and the behaviours waiting on them behave the same headless. Music is a MIDI file sequencer on
-its own thread sending to winmm's MIDI mapper; the volume scales each channel's CC 7. A freed
-object's sounds play out without going on (the original would read the freed object).
+and the behaviours waiting on them behave the same headless. A freed object's sounds play out
+without going on (the original would read the freed object). The music: see below.
+
+## The AdLib music
+
+ROC's music driver for an AdLib or Sound Blaster is Apogee's AL_MIDI (segment 45b5, no debug
+info: read from the machine code), fed by MIDI.C (42b4). The game never loads another instrument
+bank (MIDI_LoadTimbres isn't called), so `_ADLIB_TimbreBank` (DS:25f2) is the music's sound.
+
+**Tables** (DGROUP): the drum map at 24f2 (128 keys x (instrument, note): the drums are
+instruments 128-255 played at a fixed note); `_ADLIB_TimbreBank` at 25f2 (256 x 11 bytes: the 20h,
+40h, 60h, 80h, E0h registers for the modulator and the carrier, then C0h); slotVoice at 312c (each
+of the 9 voices' two slots), offsetSlot at 3150 (a slot's register offset), NotePitch at 3162
+(32 detunes x 12 notes of F-numbers: 343-647 in tune, A = 577), OctavePitch at 3462 (block << 10),
+the reserved voices at 3472. In BSS: Channel[16] (0x1c bytes at a22a: the voice list, Timbre,
+Pitchbend, KeyOffset, KeyDetune, Volume, pan, detune and two fields never set), Voice[9] (0x18
+bytes at a3f2: list links, num, key, velocity, channel, pitchleft / right, timbre, status),
+VoiceLevel / VoiceKsl per slot, NoteMod12 / NoteDiv12 for 0-95.
+
+**AL_MIDI**: AL_Init (ports 388h, mono) and AL_Reset: register 01h = 20h (waveforms on), 08h = 0,
+BDh = 0 (no rhythm mode), every voice's A0h / B0h / E0h cleared, PitchBendRange 2, the voices put
+in a free list in order, every channel's volume 90. AL_NoteOn takes the free list's first voice
+(if none, the drum channel's first voice is cut), puts it on the channel's list and sets its
+timbre (unless it has it; the modulator's 40h from the instrument, the carrier's left at 3Fh), its
+volume (carrier 40h = ((63 - level) x (velocity | 80h) x channel volume >> 15) ^ 3Fh | KSL) and its
+pitch (note = key, or the drum's note, + KeyOffset - 12, kept to 0-95; A0h / B0h = OctavePitch |
+NotePitch[KeyDetune][note % 12] | 2000h for the key). AL_NoteOff clears the key bit (B0h = pitch
+>> 8) and gives the voice back to the end of the free list. AL_ControlChange: 7 the channel's
+volume (its voices updated), 10 pan and 94 detune (stored for the stereo OPL3 only), 121 resets
+every voice and channel (without touching the chip), 123 all notes off. AL_SetPitchBend: bend =
+lsb + (msb << 8) (not << 7), t = (bend x 2 & FFFFh) / 200h in 1/32 semitones: KeyOffset = t >> 5 -
+2, KeyDetune = t & 31. **MIDI.C** sends a channel's volume as volume x `_MIDI_TotalVolume` / 255
+(MUSIC_SetVolume, fades); MIDI_Reset sends all notes off, 121 and a bend range of 2 to each channel
+and sets their volume to 90; controller 126 skips a byte more than it should.
+
+**The port**: `src/almidi.c` is that driver and layer; `src/opl.c` an OPL2 written for the port:
+per slot a 19-bit phase advanced by ((F-number << block) >> 1) x 2·multiple >> 1 a sample, a
+quarter-sine table in -log2 units (1/256 of an octave of level) and an exponent table back,
+attenuation in 0.1875 dB steps (TL x 4, SL x 16, KSL from its ROM by F-number and block),
+envelope rates as (rate x 4 + key scale) with the usual 13 increment patterns on a counter that
+ticks once a sample, tremolo (210 steps every 64 samples, 1 or 4.8 dB) and vibrato (8 steps every
+1024 samples), feedback ((out + previous out) >> (9 - FB)) and the modulator's output added to the
+carrier's 10-bit phase. It runs at 49716 Hz in the audio callback, which plays the song's events
+at their sample and resamples linearly to 44.1 kHz.
 
 ## The game loop
 

@@ -31,6 +31,8 @@ add_executable(roc
     src/save.c
     src/audio.c
     src/sound.c
+    src/opl.c
+    src/almidi.c
     src/rxross.c
     src/rxboss.c
     src/rxyou.c
@@ -43,8 +45,8 @@ if(TARGET SDL2::SDL2main)
     target_link_libraries(roc PRIVATE SDL2::SDL2main)
 endif()
 target_link_libraries(roc PRIVATE SDL2::SDL2)
-if(WIN32)
-    target_link_libraries(roc PRIVATE winmm)
+if(NOT WIN32)
+    target_link_libraries(roc PRIVATE m)
 endif()
 
 if(MSVC)

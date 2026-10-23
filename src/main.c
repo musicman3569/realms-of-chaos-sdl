@@ -27,6 +27,7 @@
  *   --no-objects     don't draw the objects
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
  * --no-music without music. */
+#include "almidi.h"
 #include "archive.h"
 #include "audio.h"
 #include "engine.h"
@@ -331,11 +332,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;
     }
-    /* SETUPSOUND: the effects on _SoundVoices voices, the music on the MIDI synthesiser */
+    /* SETUPSOUND: the effects on _SoundVoices voices, the music on the (emulated) AdLib */
     if (Sess.sound_voices < 1)
         Sess.sound_voices = 8;
+    const bool adlib = al_load_tables(opt.exe);
     audio_init(!headless && !opt.no_sound && Sess.sound_card != -1,
-               !headless && !opt.no_music && Sess.music_card != -1, Sess.sound_voices);
+               adlib && !headless && !opt.no_music && Sess.music_card != -1, Sess.sound_voices);
     sound_init(&arc, Sess.sound_card != -1, Sess.sound_voices);
     fx_set_volume(Sess.sound_volume);
     music_set_volume(Sess.music_volume);
