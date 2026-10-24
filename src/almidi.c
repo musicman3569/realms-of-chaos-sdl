@@ -8,7 +8,15 @@
  * second half and the note it is played at (the drum map). A voice gets the instrument's
  * registers (AL_SetVoiceTimbre), the carrier's level from the instrument, the velocity and the
  * channel's volume (AL_SetVoiceVolume), and the frequency from the key, the channel's bend and
- * the pitch tables (AL_SetVoicePitch). */
+ * the pitch tables (AL_SetVoicePitch).
+ *
+ * Stereo: the driver can also play on two chips, one for each side, as a Sound Blaster Pro has
+ * them (_AL_Stereo, DS:3488; _AL_LeftPort / _AL_RightPort, DS:3484 / 3486; DS:348a selects an
+ * OPL3's two halves instead). Every register write then goes to both, and the right chip plays
+ * each note 5/32 of a semitone sharp, which widens the sound like a chorus (the pan and detune
+ * controllers are kept but used nowhere). ROC.EXE never turns it on: AL_Init, its only setter,
+ * clears it, so the original plays in mono on every card. The port plays this stereo by default
+ * (al_set_stereo) and the original's mono on request. */
 #include "almidi.h"
 
 #include "opl.h"
@@ -34,6 +42,7 @@ typedef struct {
     int key, velocity, channel;
     int timbre;
     int pitch;                   /* pitchleft: the A0h / B0h value without the key bit */
+    int pitch_right;             /* pitchright: the right chip's (stereo) */
     int status;                  /* KEY_ON while sounding */
 } voice_t;
 
@@ -68,7 +77,45 @@ static struct {
     /* MIDI.C */
     int midi_volume[CHANNELS];   /* _MIDI_ChannelVolume */
     int total_volume;            /* _MIDI_TotalVolume */
+    bool stereo;                 /* _AL_Stereo (the port's choice) */
 } A = {.total_volume = 255};
+
+void al_set_stereo(bool on)
+{
+    A.stereo = on;
+}
+
+bool al_stereo(void)
+{
+    return A.stereo;
+}
+
+/* AL_SendOutputToPort's ports: 388h (the AdLib's: on a Sound Blaster Pro both chips answer to
+ * it) and the left and right chips' own. Without stereo there's one chip, chip 0. */
+enum { PORT_ADLIB, PORT_LEFT, PORT_RIGHT };
+
+static void out(int port, int reg, int v)
+{
+    if (!A.stereo || port == PORT_LEFT) {
+        opl_write(0, reg, v);
+    } else if (port == PORT_RIGHT) {
+        opl_write(1, reg, v);
+    } else {
+        opl_write(0, reg, v);
+        opl_write(1, reg, v);
+    }
+}
+
+/* AL_SendOutput: to both chips' own ports in stereo, else to 388h. */
+static void send_output(int reg, int v)
+{
+    if (A.stereo) {
+        out(PORT_LEFT, reg, v);
+        out(PORT_RIGHT, reg, v);
+    } else {
+        out(PORT_ADLIB, reg, v);
+    }
+}
 
 bool al_load_tables(const char *exe_path)
 {
@@ -154,25 +201,25 @@ static void set_voice_timbre(int v)
     int off = A.offset_slot[slot];
     A.voice_level[slot] = 63 - (t->level[0] & 0x3F);
     A.voice_ksl[slot] = t->level[0] & 0xC0;
-    opl_write(0xA0 + v, 0);
-    opl_write(0xB0 + v, 0);
-    opl_write(0x80 + off, 0xFF); /* (a quick release, so the old note ends) */
-    opl_write(0x60 + off, t->env1[0]);
-    opl_write(0x80 + off, t->env2[0]);
-    opl_write(0x20 + off, t->savek[0]);
-    opl_write(0xE0 + off, t->wave[0]);
-    opl_write(0x40 + off, t->level[0]);
-    opl_write(0xC0 + v, t->feedback);
+    send_output(0xA0 + v, 0);
+    send_output(0xB0 + v, 0);
+    send_output(0x80 + off, 0xFF); /* (a quick release, so the old note ends) */
+    send_output(0x60 + off, t->env1[0]);
+    send_output(0x80 + off, t->env2[0]);
+    send_output(0x20 + off, t->savek[0]);
+    send_output(0xE0 + off, t->wave[0]);
+    send_output(0x40 + off, t->level[0]);
+    out(PORT_ADLIB, 0xC0 + v, t->feedback); /* (straight to 388h) */
     slot = A.slot_voice[v][1];
     off = A.offset_slot[slot];
     A.voice_level[slot] = 63 - (t->level[1] & 0x3F);
     A.voice_ksl[slot] = t->level[1] & 0xC0;
-    opl_write(0x40 + off, 0x3F);
-    opl_write(0x80 + off, 0xFF);
-    opl_write(0x60 + off, t->env1[1]);
-    opl_write(0x80 + off, t->env2[1]);
-    opl_write(0x20 + off, t->savek[1]);
-    opl_write(0xE0 + off, t->wave[1]);
+    send_output(0x40 + off, 0x3F);
+    send_output(0x80 + off, 0xFF);
+    send_output(0x60 + off, t->env1[1]);
+    send_output(0x80 + off, t->env2[1]);
+    send_output(0x20 + off, t->savek[1]);
+    send_output(0xE0 + off, t->wave[1]);
 }
 
 /* AL_SetVoiceVolume: the carrier's level, (63 - level) * (velocity + 128) * volume >> 15. */
@@ -186,11 +233,12 @@ static void set_voice_volume(int v)
     uint32_t t = (uint32_t)A.voice_level[slot] * (uint32_t)(velocity | 0x80);
     t = (A.channel[x->channel].volume * t) >> 15;
     const int level = ((int)t ^ 0x3F) | A.voice_ksl[slot];
-    opl_write(0x40 + A.offset_slot[slot], level);
+    send_output(0x40 + A.offset_slot[slot], level);
 }
 
 /* AL_SetVoicePitch: key (or the drum's note) + the bend's semitones - 12, kept to 0-95, gives
- * the block and the F-number (with the bend's 1/32 semitones); the key bit if it sounds. */
+ * the block and the F-number (with the bend's 1/32 semitones); the key bit if it sounds. In
+ * stereo the right chip's note is 5/32 of a semitone higher (into the next note past 31). */
 static void set_voice_pitch(int v)
 {
     voice_t *x = &A.voice[v];
@@ -203,8 +251,23 @@ static void set_voice_pitch(int v)
         note = 0;
     x->pitch = A.octave_pitch[note / 12] | A.note_pitch[c->key_detune & 31][note % 12];
     const int p = x->pitch | x->status;
-    opl_write(0xA0 + v, p & 0xFF);
-    opl_write(0xB0 + v, p >> 8);
+    if (!A.stereo) {
+        out(PORT_ADLIB, 0xA0 + v, p & 0xFF);
+        out(PORT_ADLIB, 0xB0 + v, p >> 8);
+        return;
+    }
+    out(PORT_LEFT, 0xA0 + v, p & 0xFF);
+    out(PORT_LEFT, 0xB0 + v, p >> 8);
+    int detune = (c->key_detune & 31) + 5;
+    if (detune > 0x1F) {
+        detune -= 0x20;
+        if (note < 0x5F)
+            note++;
+    }
+    x->pitch_right = A.octave_pitch[note / 12] | A.note_pitch[detune][note % 12];
+    const int r = x->pitch_right | x->status;
+    out(PORT_RIGHT, 0xA0 + v, r & 0xFF);
+    out(PORT_RIGHT, 0xB0 + v, r >> 8);
 }
 
 /* AL_GetVoice: the channel's voice playing the key, or -1. */
@@ -224,7 +287,12 @@ static void note_off(int ch, int key)
         return;
     voice_t *x = &A.voice[v];
     x->status = 0;
-    opl_write(0xB0 + v, x->pitch >> 8);
+    if (A.stereo) {
+        out(PORT_LEFT, 0xB0 + v, x->pitch >> 8);
+        out(PORT_RIGHT, 0xB0 + v, x->pitch_right >> 8);
+    } else {
+        out(PORT_ADLIB, 0xB0 + v, x->pitch >> 8);
+    }
     list_remove(&A.channel[ch].voices, v);
     list_add(&A.free_voices, v);
 }
@@ -331,19 +399,31 @@ static void pitch_bend(int ch, int lsb, int msb)
         set_voice_pitch(v);
 }
 
-/* AL_Init / AL_Reset: waveforms on, note select and rhythm off, every voice silent. */
+/* AL_FlushCard(port): every voice silent, its waveforms back to the sine. */
+static void flush_card(int port)
+{
+    for (int v = 0; v < VOICES; v++) {
+        out(port, 0xA0 + v, 0);
+        out(port, 0xB0 + v, 0);
+        out(port, 0xE0 + A.offset_slot[A.slot_voice[v][0]], 0);
+        out(port, 0xE0 + A.offset_slot[A.slot_voice[v][1]], 0);
+    }
+}
+
+/* AL_Init / AL_Reset: waveforms on, note select and rhythm off (through 388h), every voice
+ * silent on each chip. */
 void al_init(void)
 {
     opl_reset();
     A.bend_range = 2;
-    opl_write(0x01, 0x20);
-    opl_write(0x08, 0);
-    opl_write(0xBD, 0);
-    for (int v = 0; v < VOICES; v++) {
-        opl_write(0xA0 + v, 0);
-        opl_write(0xB0 + v, 0);
-        opl_write(0xE0 + A.offset_slot[A.slot_voice[v][0]], 0);
-        opl_write(0xE0 + A.offset_slot[A.slot_voice[v][1]], 0);
+    out(PORT_ADLIB, 0x01, 0x20);
+    out(PORT_ADLIB, 0x08, 0);
+    out(PORT_ADLIB, 0xBD, 0);
+    if (A.stereo) {
+        flush_card(PORT_LEFT);
+        flush_card(PORT_RIGHT);
+    } else {
+        flush_card(PORT_ADLIB);
     }
     reset_voices();
     for (int c = 0; c < CHANNELS; c++)

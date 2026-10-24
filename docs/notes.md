@@ -584,6 +584,27 @@ ticks once a sample, tremolo (210 steps every 64 samples, 1 or 4.8 dB) and vibra
 carrier's 10-bit phase. It runs at 49716 Hz in the audio callback, which plays the song's events
 at their sample and resamples linearly to 44.1 kHz.
 
+**Stereo.** AL_MIDI can drive two chips, one a side: `_AL_Stereo` (DS:3488) sends every
+AL_SendOutput write to `_AL_LeftPort` and `_AL_RightPort` (DS:3484 / 3486) instead of 388h, and
+DS:348a (an OPL3: its two register halves) has AL_Reset turn on the OPL3 (register 105h = 1 on the
+right port, cleared by AL_Shutdown) and writes C0h with 20h on the left and 10h on the right (the
+output bits) instead of sending it to 388h. AL_SetVoicePitch then plays each note on the right
+chip 5/32 of a semitone sharp (KeyDetune + 5, carrying into the next note past 31, not past note
+95; the voice keeps it as pitchright for AL_NoteOff), so the two sides beat against each other
+like a chorus; volume is the same both sides, and the pan (10) and detune (94) controllers that
+AL_ControlChange keeps are read nowhere. ROC.EXE never uses any of it: AL_Init (called once,
+from MUSIC_Init: the far call at image offset 31bf8) clears both flags and sets both
+ports to 388h, and nothing else in the EXE writes them. So the original's music is mono on every
+card, the SB Pro and SB16 included.
+
+The port plays this dormant stereo by default (the user's choice): two OPL2s as on a Sound
+Blaster Pro (388h reaching both, so C0h and AL_Reset's registers go to both chips), the left at
+the notes' pitch and the right sharp, each to its own speaker; `--mono-music` gives the original's
+one chip on both speakers. Checked with a scratch renderer: mono is byte for byte what the port
+played before; in stereo the left side is that same signal and the right a test A4 at 441 Hz
+against 438 Hz, at the same loudness and without clipping; the songs' two sides correlate at
+about 0.2-0.4. Two chips cost about 2% of a core.
+
 ## The game loop
 
 **Timers** (TIMER.C and the timer task at 1000:c5d3, 582 Hz): each run adds `_TicAmt` (1, or 0

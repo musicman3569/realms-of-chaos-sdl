@@ -28,7 +28,8 @@
  *   --list           print every object at the end
  *   --no-objects     don't draw the objects
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
- * --no-music without music. --fullscreen starts in full screen (Alt+Enter switches between full
+ * --no-music without music; the music plays in stereo on two emulated OPL2s (the driver's own
+ * stereo, which ROC.EXE never turns on), or with --mono-music as the original plays it. --fullscreen starts in full screen (Alt+Enter switches between full
  * screen and the window at any time). --joystick uses the joystick (a game controller or any joystick
  * SDL finds) even if ROC.CFG doesn't turn it on. */
 #include "almidi.h"
@@ -66,6 +67,7 @@ typedef struct {
     host_hold_t holds[MAX_HOLDS];
     int hold_count;
     bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick, fullscreen;
+    bool mono_music;
 } options_t;
 
 static options_t opt;
@@ -159,6 +161,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->joystick = true;
         else if (!strcmp(a, "--fullscreen"))
             o->fullscreen = true;
+        else if (!strcmp(a, "--mono-music"))
+            o->mono_music = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
             o->data_dir = argv[++i];
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -313,7 +317,7 @@ int main(int argc, char **argv)
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
                         "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick] "
-                        "[--fullscreen]\n");
+                        "[--fullscreen] [--mono-music]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
@@ -355,6 +359,7 @@ int main(int argc, char **argv)
     if (Sess.sound_voices < 1)
         Sess.sound_voices = 8;
     const bool adlib = al_load_tables(opt.exe);
+    al_set_stereo(!opt.mono_music);
     audio_init(!headless && !opt.no_sound && Sess.sound_card != -1,
                adlib && !headless && !opt.no_music && Sess.music_card != -1, Sess.sound_voices);
     sound_init(&arc, Sess.sound_card != -1, Sess.sound_voices);

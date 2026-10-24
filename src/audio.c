@@ -305,7 +305,7 @@ static struct {
     bool fading;
     int applied;                 /* the volume MIDI_SetVolume was last given */
     double opl_pos;              /* resampling: where between two OPL samples */
-    int opl_prev, opl_next;
+    int opl_prev[OPL_CHIPS], opl_next[OPL_CHIPS]; /* each chip's (the left and the right) */
 } M = {.volume = 255, .applied = -1};
 
 static uint32_t be32(const uint8_t *p)
@@ -458,11 +458,14 @@ static int current_volume(void)
 }
 
 /* The music's n frames, added to out: the song's events at their time (looping at its end),
- * the volume (MIDI_SetVolume, as it changes), the OPL's samples resampled to the mixer's rate. */
+ * the volume (MIDI_SetVolume, as it changes), the OPL's samples resampled to the mixer's rate:
+ * the left chip's to the left and the right chip's to the right in stereo, else the one chip's
+ * to both. */
 static void music_mix(int16_t *out, int n)
 {
     if (!M.open)
         return;
+    const bool stereo = al_stereo();
     const double frame_us = 1000000.0 / MIX_RATE;
     for (int i = 0; i < n; i++) {
         if (M.playing && !M.paused) {
@@ -489,13 +492,15 @@ static void music_mix(int16_t *out, int n)
         M.opl_pos += (double)OPL_RATE / MIX_RATE;
         while (M.opl_pos >= 1.0) {
             M.opl_pos -= 1.0;
-            M.opl_prev = M.opl_next;
-            M.opl_next = opl_sample();
+            memcpy(M.opl_prev, M.opl_next, sizeof M.opl_prev);
+            opl_sample(M.opl_next);
         }
-        int32_t v = M.opl_prev + (int32_t)((M.opl_next - M.opl_prev) * M.opl_pos);
-        v = out[i * 2] + v * OPL_GAIN;
-        v = v > 32767 ? 32767 : v < -32768 ? -32768 : v;
-        out[i * 2] = out[i * 2 + 1] = (int16_t)v;
+        for (int side = 0; side < 2; side++) {
+            const int c = stereo ? side : 0;
+            int32_t v = M.opl_prev[c] + (int32_t)((M.opl_next[c] - M.opl_prev[c]) * M.opl_pos);
+            v = out[i * 2 + side] + v * OPL_GAIN;
+            out[i * 2 + side] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+        }
     }
 }
 

@@ -10,7 +10,11 @@
 
 /* Read the tables from ROC.EXE; false if it isn't the game's EXE. */
 bool al_load_tables(const char *exe_path);
-/* AL_Init / AL_Reset: the chip and every voice and channel to their start. */
+/* The driver's stereo (two chips, the right a little sharp; see almidi.c), set before al_init.
+ * Off is the original's mono. */
+void al_set_stereo(bool on);
+bool al_stereo(void);
+/* AL_Init / AL_Reset: the chips and every voice and channel to their start. */
 void al_init(void);
 
 /* MIDI.C: a song's channel message (status with its channel, and its data bytes). */

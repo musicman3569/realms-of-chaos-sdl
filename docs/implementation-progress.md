@@ -122,8 +122,10 @@ once on stderr. Headless runs print the level, the player's position and animato
 inventory and the level's counters (found / in the level) at the end.
 
 Sound: effects and music through SDL2 audio on every platform; the music is the original's AdLib
-driver on an emulated OPL2, so it sounds as it did on an AdLib or Sound Blaster. `--no-sound`
-and `--no-music` turn them off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
+driver, in the stereo its code has for two chips but ROC.EXE never turns on (each note on both
+sides, the right a little sharp: a wide, chorused sound), or with `--mono-music` on one emulated
+OPL2, exactly as it sounded on an AdLib or Sound Blaster. `--no-sound` and `--no-music` turn them
+off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
 still time every sound, so the game behaves as it does with sound.
 
 ## Completed
@@ -491,6 +493,16 @@ still time every sound, so the game behaves as it does with sound.
   mouse pointer hidden; the game doesn't see that Enter). Not remembered between runs: ROC.CFG
   has no place for it. Checked on SDL's dummy video driver (no error) and the documented headless
   runs are unchanged; not yet seen on a real screen.
+- Port, the AdLib stereo (notes "The AdLib music", "Stereo"): AL_MIDI's stereo path, read from
+  the machine code, turns out to be dead code in ROC.EXE (AL_Init clears it; the original is mono
+  on every card). Chosen with the user: play it by default, `--mono-music` for the original's
+  sound. `src/opl.c` runs two chips; `src/almidi.c` has the driver's ports (388h to both, the left
+  and the right), AL_SendOutput to both, the right chip's pitch 5/32 semitone up (pitchright, also
+  for the note's release); `src/audio.c` mixes each chip to its side. Verified with a scratch
+  renderer (render.c in the session scratchpad): `--mono-music` is byte for byte the previous
+  output; stereo's left side is that too, the right is sharp (A4 438 / 441 Hz) at the same
+  loudness, no clipping; the game runs with music on SDL's dummy drivers both ways; the headless
+  runs are unchanged. Heard by the user both ways (the difference is audible).
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -498,7 +510,6 @@ still time every sound, so the game behaves as it does with sound.
 
 ## Next steps
 
-1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; the OPL3 stereo paths of
-   AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
-   Linux and macOS; the interactive window, the sound, the animated tiles and the joystick (with
-   a real controller) haven't been tried by a person yet.
+1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; a build on Linux and
+   macOS; the interactive window, the sound effects, the animated tiles and the
+   joystick (with a real controller) haven't been tried by a person yet.

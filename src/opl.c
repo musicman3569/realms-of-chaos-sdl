@@ -37,7 +37,7 @@ typedef struct {
     slot_t *op[2];
 } chan_t;
 
-static struct {
+typedef struct {
     slot_t slot[18];
     chan_t chan[9];
     bool wse;                    /* 01h bit 5: the waveforms enabled */
@@ -46,10 +46,18 @@ static struct {
     uint32_t eg_cnt;             /* the envelopes' clock: one a sample */
     int trem_pos, trem_step;     /* tremolo: a triangle of 210 steps, one each 64 samples */
     int vib_pos, vib_step;       /* vibrato: 8 steps, one each 1024 samples */
+} chip_t;
+
+/* the chips (OPL_CHIPS: an SB Pro has two OPL2s, one for each side) and the chip at work */
+static chip_t chips[OPL_CHIPS];
+static chip_t *O = &chips[0];
+
+/* the ROM tables, shared */
+static struct {
     uint16_t logsin[256];
     uint16_t exprom[256];
-    bool tables;
-} O;
+    bool made;
+} T;
 
 /* slot number for each register offset (-1: none) */
 static const int8_t slot_of[0x20] = {0, 1, 2, 3, 4, 5, -1, -1, 6, 7, 8, 9, 10, 11, -1, -1,
@@ -74,31 +82,39 @@ static void make_tables(void)
 {
     for (int i = 0; i < 256; i++) {
         const double s = sin((i + 0.5) * 3.14159265358979323846 / 512.0);
-        O.logsin[i] = (uint16_t)lround(-log2(s) * 256.0);
-        O.exprom[i] = (uint16_t)lround((pow(2.0, i / 256.0) - 1.0) * 1024.0);
+        T.logsin[i] = (uint16_t)lround(-log2(s) * 256.0);
+        T.exprom[i] = (uint16_t)lround((pow(2.0, i / 256.0) - 1.0) * 1024.0);
     }
-    O.tables = true;
+    T.made = true;
 }
 
-void opl_reset(void)
+static void reset_chip(void)
 {
-    if (!O.tables)
-        make_tables();
-    memset(O.slot, 0, sizeof O.slot);
-    memset(O.chan, 0, sizeof O.chan);
+    memset(O->slot, 0, sizeof O->slot);
+    memset(O->chan, 0, sizeof O->chan);
     for (int s = 0; s < 18; s++) {
-        O.slot[s].env = EG_MAX;
-        O.slot[s].state = EG_RELEASE;
+        O->slot[s].env = EG_MAX;
+        O->slot[s].state = EG_RELEASE;
     }
     /* channel c: slots c % 3 + (c / 3) * 6 and 3 more */
     for (int c = 0; c < 9; c++) {
         const int s = c % 3 + c / 3 * 6;
-        O.chan[c].op[0] = &O.slot[s];
-        O.chan[c].op[1] = &O.slot[s + 3];
+        O->chan[c].op[0] = &O->slot[s];
+        O->chan[c].op[1] = &O->slot[s + 3];
     }
-    O.wse = O.nts = O.dam = O.dvb = false;
-    O.eg_cnt = 0;
-    O.trem_pos = O.trem_step = O.vib_pos = O.vib_step = 0;
+    O->wse = O->nts = O->dam = O->dvb = false;
+    O->eg_cnt = 0;
+    O->trem_pos = O->trem_step = O->vib_pos = O->vib_step = 0;
+}
+
+void opl_reset(void)
+{
+    if (!T.made)
+        make_tables();
+    for (int i = 0; i < OPL_CHIPS; i++) {
+        O = &chips[i];
+        reset_chip();
+    }
 }
 
 static void key_on(chan_t *c)
@@ -115,21 +131,21 @@ static void key_off(chan_t *c)
         c->op[k]->state = EG_RELEASE;
 }
 
-void opl_write(int reg, int v)
+static void write_chip(int reg, int v)
 {
     reg &= 0xFF;
     v &= 0xFF;
     if (reg == 0x01) {
-        O.wse = (v & 0x20) != 0;
+        O->wse = (v & 0x20) != 0;
         return;
     }
     if (reg == 0x08) {
-        O.nts = (v & 0x40) != 0;
+        O->nts = (v & 0x40) != 0;
         return;
     }
     if (reg == 0xBD) {
-        O.dam = (v & 0x80) != 0;
-        O.dvb = (v & 0x40) != 0;
+        O->dam = (v & 0x80) != 0;
+        O->dvb = (v & 0x40) != 0;
         return; /* (rhythm mode isn't emulated) */
     }
     const int group = reg & 0xE0;
@@ -137,7 +153,7 @@ void opl_write(int reg, int v)
         const int n = slot_of[reg & 0x1F];
         if (n < 0)
             return;
-        slot_t *s = &O.slot[n];
+        slot_t *s = &O->slot[n];
         switch (group) {
         case 0x20:
             s->am = v & 0x80;
@@ -167,7 +183,7 @@ void opl_write(int reg, int v)
     const int c = reg & 0x0F;
     if (c > 8)
         return;
-    chan_t *ch = &O.chan[c];
+    chan_t *ch = &O->chan[c];
     if (group == 0xA0 && (reg & 0xF0) == 0xA0) {
         ch->fnum = (ch->fnum & 0x300) | v;
     } else if ((reg & 0xF0) == 0xB0) {
@@ -198,14 +214,14 @@ static int eg_step(int rate, int rks, bool *instant)
         *instant = true;
     const int shift = eff < 48 ? 12 - (eff >> 2) : 0;
     const int sel = eff < 48 ? (eff & 3) : eff < 52 ? 4 + (eff & 3) : eff < 56 ? 8 + (eff & 3) : 12;
-    if (O.eg_cnt & ((1u << shift) - 1))
+    if (O->eg_cnt & ((1u << shift) - 1))
         return 0;
-    return eg_inc[sel][(O.eg_cnt >> shift) & 7];
+    return eg_inc[sel][(O->eg_cnt >> shift) & 7];
 }
 
 static void envelope(slot_t *s, const chan_t *c)
 {
-    int rks = c->block << 1 | (c->fnum >> (O.nts ? 8 : 9) & 1);
+    int rks = c->block << 1 | (c->fnum >> (O->nts ? 8 : 9) & 1);
     if (!s->ksr)
         rks >>= 2;
     bool instant;
@@ -249,7 +265,7 @@ static int wave(const slot_t *s, int p, int att)
     p &= 0x3FF;
     int idx;
     bool neg = false;
-    switch (O.wse ? s->ws : 0) {
+    switch (O->wse ? s->ws : 0) {
     case 0:
         idx = p & 0x100 ? ~p & 0xFF : p & 0xFF;
         neg = p & 0x200;
@@ -268,10 +284,10 @@ static int wave(const slot_t *s, int p, int att)
         idx = p & 0xFF;
         break;
     }
-    const int level = O.logsin[idx] + (att << 3);
+    const int level = T.logsin[idx] + (att << 3);
     if (level >= 0x1FFF)
         return 0;
-    const int v = ((O.exprom[(level & 0xFF) ^ 0xFF] | 0x400) << 1) >> (level >> 8);
+    const int v = ((T.exprom[(level & 0xFF) ^ 0xFF] | 0x400) << 1) >> (level >> 8);
     return neg ? -v : v;
 }
 
@@ -283,8 +299,8 @@ static int attenuation(const slot_t *s, const chan_t *c)
         ksl = 0;
     int att = s->env + (s->tl << 2) + (ksl >> ksl_shift[s->ksl]);
     if (s->am) {
-        const int t = O.trem_pos < 105 ? O.trem_pos : 209 - O.trem_pos;
-        att += t >> (O.dam ? 2 : 4);
+        const int t = O->trem_pos < 105 ? O->trem_pos : 209 - O->trem_pos;
+        att += t >> (O->dam ? 2 : 4);
     }
     return att > EG_MAX ? EG_MAX : att;
 }
@@ -295,23 +311,29 @@ static void advance_phase(slot_t *s, const chan_t *c)
     if (s->vib) {
         /* vibrato: a fraction of the F-number's top bits, up and down in 8 steps */
         int range = fnum >> 7 & 7;
-        if (!(O.vib_pos & 3))
+        if (!(O->vib_pos & 3))
             range = 0;
-        else if (O.vib_pos & 1)
+        else if (O->vib_pos & 1)
             range >>= 1;
-        if (!O.dvb)
+        if (!O->dvb)
             range >>= 1;
-        fnum += O.vib_pos & 4 ? -range : range;
+        fnum += O->vib_pos & 4 ? -range : range;
     }
     const uint32_t inc = (uint32_t)(((fnum << c->block) >> 1) * mult2[s->mult]) >> 1;
     s->phase = (s->phase + inc) & 0x7FFFF;
 }
 
-int opl_sample(void)
+void opl_write(int chip, int reg, int v)
+{
+    O = &chips[chip < 0 || chip >= OPL_CHIPS ? 0 : chip];
+    write_chip(reg, v);
+}
+
+static int chip_sample(void)
 {
     int mix = 0;
     for (int n = 0; n < 9; n++) {
-        chan_t *c = &O.chan[n];
+        chan_t *c = &O->chan[n];
         slot_t *m = c->op[0], *k = c->op[1];
         envelope(m, c);
         envelope(k, c);
@@ -327,15 +349,23 @@ int opl_sample(void)
         advance_phase(m, c);
         advance_phase(k, c);
     }
-    O.eg_cnt++;
-    if (++O.trem_step == 64) {
-        O.trem_step = 0;
-        if (++O.trem_pos == 210)
-            O.trem_pos = 0;
+    O->eg_cnt++;
+    if (++O->trem_step == 64) {
+        O->trem_step = 0;
+        if (++O->trem_pos == 210)
+            O->trem_pos = 0;
     }
-    if (++O.vib_step == 1024) {
-        O.vib_step = 0;
-        O.vib_pos = (O.vib_pos + 1) & 7;
+    if (++O->vib_step == 1024) {
+        O->vib_step = 0;
+        O->vib_pos = (O->vib_pos + 1) & 7;
     }
     return mix;
+}
+
+void opl_sample(int out[OPL_CHIPS])
+{
+    for (int i = 0; i < OPL_CHIPS; i++) {
+        O = &chips[i];
+        out[i] = chip_sample();
+    }
 }
