@@ -715,10 +715,12 @@ static void enhance_menu(void)
         const bool stereo = al_stereo();
         const char *const menu[] = {host_crt() ? "CRT Filter: On" : "CRT Filter: Off",
                                     host_fullscreen() ? "Full Screen: On" : "Full Screen: Off",
+                                    host_controller() ? "Controller Support: On"
+                                                      : "Controller Support: Off",
                                     stereo ? "Music: Stereo" : "Music: Mono",
                                     game_title_scream ? "Title Scream: On" : "Title Scream: Off",
                                     NULL};
-        open_menu(menu, 0x28, 0x10, default_pal() ? "{2}ENHANCEMENTS" : "{3}ENHANCEMENTS");
+        open_menu(menu, 0x28, 0x12, default_pal() ? "{2}ENHANCEMENTS" : "{3}ENHANCEMENTS");
         const int sel = select_menu(menu, 5);
         close_menu();
         if (sel == 1) {
@@ -728,9 +730,12 @@ static void enhance_menu(void)
             host_set_fullscreen(!host_fullscreen());
             Enhance.fullscreen = host_fullscreen();
         } else if (sel == 3) {
+            Enhance.controller = !host_controller();
+            host_set_controller(Enhance.controller);
+        } else if (sel == 4) {
             Enhance.stereo_music = !stereo;
             music_set_stereo(Enhance.stereo_music);
-        } else if (sel == 4) {
+        } else if (sel == 5) {
             Enhance.title_scream = game_title_scream = !game_title_scream;
         } else {
             break;

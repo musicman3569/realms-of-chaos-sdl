@@ -170,7 +170,7 @@ bool host_init(const host_options_t *o)
     }
     SDL_SetTextureScaleMode(H.crt_tex, SDL_ScaleModeLinear);
     H.last = SDL_GetPerformanceCounter();
-    if ((Sess.joystick_on || o->joystick) && SDL_NumJoysticks() < 1)
+    if (Sess.joystick_on && SDL_NumJoysticks() < 1)
         fprintf(stderr, "roc: no joystick found (it's used once one is plugged in)\n");
     return true;
 }
@@ -465,6 +465,34 @@ static void my_joy_reader(void)
                 H.joy_key[b] = (uint8_t)button_scancode(b);
             H.keys[H.joy_key[b]] = on;
         }
+    }
+}
+
+bool host_controller(void)
+{
+    return H.opt.joystick;
+}
+
+/* Turned off, the stick and buttons let go of the keys they hold. */
+void host_set_controller(bool on)
+{
+    const bool was = host_joystick_on();
+    H.opt.joystick = on;
+    if (!was || host_joystick_on())
+        return;
+    if (H.joy_x) {
+        set_action(K_LEFT, 0);
+        set_action(K_RIGHT, 0);
+    }
+    if (H.joy_y) {
+        set_action(K_UP, 0);
+        set_action(K_DOWN, 0);
+    }
+    H.joy_x = H.joy_y = 0;
+    for (int b = 0; b < JOY_BUTTONS; b++) {
+        if (H.joy_button[b])
+            H.keys[H.joy_key[b]] = 0;
+        H.joy_button[b] = 0;
     }
 }
 

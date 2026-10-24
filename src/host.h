@@ -50,6 +50,9 @@ bool host_crt(void);
 void host_set_crt(bool on);
 bool host_fullscreen(void);
 void host_set_fullscreen(bool on);
+/* The controller whatever ROC.CFG says (--joystick); off leaves it to ROC.CFG's JoystickOn. */
+bool host_controller(void);
+void host_set_controller(bool on);
 void host_shutdown(void);
 
 /* Show the screen, wait for at least one timer tick, read the keyboard; the ticks since the

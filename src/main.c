@@ -33,9 +33,9 @@
  * scream as the game starts is left out; --title-scream plays it as the original does. --fullscreen starts in full screen (Alt+Enter switches between full
  * screen and the window at any time). --crt starts with the CRT look, after RetroArch's
  * 2xsal-level2-crt preset (Alt+C turns it on and off; screenshots then show it at 640 x 400).
- * Game Options' Enhancements menu remembers these choices in ROCP.CFG; the flags hold for their
- * run only. --joystick uses the joystick (a game controller or any joystick
- * SDL finds) even if ROC.CFG doesn't turn it on. */
+ * --joystick uses the joystick (a game controller or any joystick SDL finds) even if ROC.CFG
+ * doesn't turn it on. Game Options' Enhancements menu remembers these choices in ROCP.CFG (all on
+ * at first, but the title's scream); the flags hold for their run only. */
 #include "almidi.h"
 #include "archive.h"
 #include "audio.h"
@@ -361,7 +361,7 @@ int main(int argc, char **argv)
     const host_options_t ho = {.headless = headless, .ticks = opt.ticks, .holds = opt.holds,
                                .hold_count = opt.hold_count, .fullscreen = opt.fullscreen || (!headless && Enhance.fullscreen),
                                .crt = opt.crt || (!headless && Enhance.crt),
-                               .joystick = opt.joystick};
+                               .joystick = opt.joystick || (!headless && Enhance.controller)};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;

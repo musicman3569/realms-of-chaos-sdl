@@ -115,10 +115,12 @@ desktop's resolution, the picture scaled to fit with black bars, no mouse pointe
 (both the port's; `--fullscreen` starts in full screen). Alt+C (the port's) turns the CRT look on
 and off (`--crt` starts with it): RetroArch's 2xsal-level2-crt preset, and F12's screenshots then
 show it at 640 x 400. Game Options' last line, "Enhancements" (the port's), turns the port's
-additions on and off: CRT Filter, Full Screen, Music (Stereo / Mono) and Title Scream; the choices
-there (and Alt+C's and Alt+Enter's) are remembered in `ROCP.CFG` beside ROC.CFG, while the
-command line's `--crt`, `--fullscreen`, `--mono-music` and `--title-scream` hold for their run
-only (headless runs ignore the remembered CRT and full screen). In the menus: up / down or a line's
+additions on and off: CRT Filter, Full Screen, Controller Support (`--joystick`: the controller
+whatever ROC.CFG says; off leaves it to ROC.CFG's SETUP choice), Music (Stereo / Mono) and Title
+Scream. All are on until chosen otherwise, but Title Scream. The choices there (and Alt+C's and
+Alt+Enter's) are remembered in `ROCP.CFG` beside ROC.CFG, while the command line's `--crt`,
+`--fullscreen`, `--joystick`, `--mono-music` and `--title-scream` hold for their run only
+(headless runs ignore the remembered CRT, full screen and controller). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
 Heroes) and the saved games (saving writes the port's `ROCP.SGn` and the original's `ROC.SGn`;
 loading takes whichever of a slot's two is newer) live in the game's folder, or in
@@ -550,6 +552,13 @@ Enhancements menu) plays it.
   scratch program playing a song on SDL's disk driver through audio.c switches from stereo (the
   sides differ) to mono (identical, same loudness) mid-song; the documented runs are unchanged.
   Not yet tried on a real screen (Full Screen from the menu can't be tested headless).
+  Then (also asked for by the user): Controller Support (`Enhance.controller`, ROCP.CFG's
+  `controller`; `host_set_controller` lets go of the keys the stick and buttons hold when it's
+  turned off), and every enhancement on by default but the title's scream (a name missing from
+  ROCP.CFG keeps its default). The "no joystick found" note is only for ROC.CFG's JoystickOn now.
+  Verified headless: a fresh `--data-dir` gets crt, fullscreen, controller and stereo_music 1 and
+  title_scream 0; Controller Support turns on (and with `--joystick`, off) and is written; the
+  scripted joystick and keyboard runs and the title run are unchanged.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,

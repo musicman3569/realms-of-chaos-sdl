@@ -127,7 +127,7 @@ void config_save(void)
 /* ------------------------------------------------------------------------------------------ */
 /* ROCP.CFG (the port's)                                                                       */
 
-enhance_t Enhance = {.stereo_music = true};
+enhance_t Enhance = {.crt = true, .fullscreen = true, .controller = true, .stereo_music = true};
 
 static const struct {
     const char *name;
@@ -135,6 +135,7 @@ static const struct {
 } enhance_names[] = {
     {"crt", &Enhance.crt},
     {"fullscreen", &Enhance.fullscreen},
+    {"controller", &Enhance.controller},
     {"stereo_music", &Enhance.stereo_music},
     {"title_scream", &Enhance.title_scream},
 };
