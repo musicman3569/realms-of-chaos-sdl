@@ -3,6 +3,7 @@
 #include "host.h"
 
 #include "audio.h"
+#include "crt.h"
 #include "engine.h"
 #include "png.h"
 
@@ -29,6 +30,12 @@ static struct {
     SDL_Renderer *ren;
     SDL_Texture *tex;
     uint32_t *argb;
+    bool crt;                    /* the CRT look (--crt, Alt+C) */
+    SDL_Texture *crt_tex;        /* the picture doubled by 2xSaL, scaled to the window smoothly */
+    uint32_t *crt_argb;
+    SDL_Texture *mask;           /* the shadow mask, one texel per pixel of the picture's place */
+    int mask_w, mask_h;
+    bool mask_failed;            /* the renderer can't blend it */
     Uint64 last;
     double acc;
     int shot;
@@ -79,13 +86,20 @@ static void to_argb(uint32_t *out)
         out[i] = lut[Vga.px[i]];
 }
 
+/* The screen as shown; with the CRT look on, at CRT_W x CRT_H with the mask as a window of that
+ * size would show it. */
 int host_screenshot(const char *path)
 {
     uint32_t *px = malloc((size_t)Vga.w * Vga.h * sizeof *px);
-    if (!px)
-        return -1;
-    to_argb(px);
-    const int rc = png_write_argb(path, px, Vga.w, Vga.h);
+    uint32_t *big = H.crt ? malloc((size_t)CRT_W * CRT_H * sizeof *big) : NULL;
+    int rc = -1;
+    if (px && (big || !H.crt)) {
+        to_argb(px);
+        if (big)
+            crt_render(px, big);
+        rc = big ? png_write_argb(path, big, CRT_W, CRT_H) : png_write_argb(path, px, Vga.w, Vga.h);
+    }
+    free(big);
     free(px);
     return rc;
 }
@@ -106,6 +120,7 @@ bool host_init(const host_options_t *o)
 {
     memset(&H, 0, sizeof H);
     H.opt = *o;
+    H.crt = o->crt;
     if (!surface_init(&Vga, SCREEN_W, SCREEN_H))
         return false;
     if (o->headless)
@@ -122,12 +137,16 @@ bool host_init(const host_options_t *o)
     H.tex = H.ren ? SDL_CreateTexture(H.ren, SDL_PIXELFORMAT_ARGB8888,
                                       SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H)
                   : NULL;
+    H.crt_tex = H.tex ? SDL_CreateTexture(H.ren, SDL_PIXELFORMAT_ARGB8888,
+                                          SDL_TEXTUREACCESS_STREAMING, CRT_W, CRT_H)
+                      : NULL;
     H.argb = malloc(SCREEN_W * SCREEN_H * sizeof *H.argb);
-    if (!H.tex || !H.argb) {
+    H.crt_argb = malloc(CRT_W * CRT_H * sizeof *H.crt_argb);
+    if (!H.crt_tex || !H.argb || !H.crt_argb) {
         fprintf(stderr, "roc: SDL: %s\n", SDL_GetError());
         return false;
     }
-    SDL_RenderSetLogicalSize(H.ren, SCREEN_W, SCREEN_H);
+    SDL_SetTextureScaleMode(H.crt_tex, SDL_ScaleModeLinear);
     H.last = SDL_GetPerformanceCounter();
     if ((Sess.joystick_on || o->joystick) && SDL_NumJoysticks() < 1)
         fprintf(stderr, "roc: no joystick found (it's used once one is plugged in)\n");
@@ -162,6 +181,11 @@ void host_shutdown(void)
 {
     close_joystick();
     free(H.argb);
+    free(H.crt_argb);
+    if (H.mask)
+        SDL_DestroyTexture(H.mask);
+    if (H.crt_tex)
+        SDL_DestroyTexture(H.crt_tex);
     if (H.tex)
         SDL_DestroyTexture(H.tex);
     if (H.ren)
@@ -464,15 +488,82 @@ static int headless_frame(void)
     return (int)step;
 }
 
+/* Where the picture goes: as large as the window allows, keeping its shape, with black bars (what
+ * SDL_RenderSetLogicalSize did), in the output's own pixels so the mask lines up with them. */
+static SDL_Rect view_rect(void)
+{
+    int w, h;
+    SDL_GetRendererOutputSize(H.ren, &w, &h);
+    SDL_Rect r = {0, 0, w, h};
+    if ((long)w * SCREEN_H > (long)h * SCREEN_W)
+        r.w = (int)((long)h * SCREEN_W / SCREEN_H);
+    else
+        r.h = (int)((long)w * SCREEN_H / SCREEN_W);
+    r.x = (w - r.w) / 2;
+    r.y = (h - r.h) / 2;
+    return r;
+}
+
+/* The shadow mask for a picture of w x h pixels, made when that size changes. It's drawn over
+ * the picture with the blend 2 * mask * picture, so each texel holds half the factor: a factor
+ * over 1 (the bright channel's) can't be stored, its half can. */
+static bool make_mask(int w, int h)
+{
+    if (H.mask_failed)
+        return false;
+    if (H.mask && w == H.mask_w && h == H.mask_h)
+        return true;
+    if (H.mask)
+        SDL_DestroyTexture(H.mask);
+    H.mask = SDL_CreateTexture(H.ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+    uint32_t *px = malloc((size_t)w * h * sizeof *px);
+    const SDL_BlendMode twice = SDL_ComposeCustomBlendMode(
+        SDL_BLENDFACTOR_DST_COLOR, SDL_BLENDFACTOR_SRC_COLOR, SDL_BLENDOPERATION_ADD,
+        SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
+    if (!H.mask || !px || SDL_SetTextureBlendMode(H.mask, twice) != 0) {
+        fprintf(stderr, "roc: the CRT mask can't be drawn (%s); 2xSaL alone\n", SDL_GetError());
+        H.mask_failed = true;
+        free(px);
+        return false;
+    }
+    const uint32_t lit = (uint32_t)(CRT_MASK_LIGHT / 2 * 255 + 0.5f);
+    const uint32_t dark = (uint32_t)(CRT_MASK_DARK / 2 * 255 + 0.5f);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            const int c = crt_mask_channel(x, y);
+            px[y * w + x] = 0xFF000000u | (c == 0 ? lit : dark) << 16 | (c == 1 ? lit : dark) << 8 |
+                            (c == 2 ? lit : dark);
+        }
+    SDL_UpdateTexture(H.mask, NULL, px, w * (int)sizeof *px);
+    free(px);
+    H.mask_w = w;
+    H.mask_h = h;
+    return true;
+}
+
+static void present(void)
+{
+    const SDL_Rect r = view_rect();
+    to_argb(H.argb);
+    SDL_RenderClear(H.ren);
+    if (H.crt) {
+        crt_2xsal(H.argb, H.crt_argb);
+        SDL_UpdateTexture(H.crt_tex, NULL, H.crt_argb, CRT_W * sizeof *H.crt_argb);
+        SDL_RenderCopy(H.ren, H.crt_tex, NULL, &r);
+        if (make_mask(r.w, r.h))
+            SDL_RenderCopy(H.ren, H.mask, NULL, &r);
+    } else {
+        SDL_UpdateTexture(H.tex, NULL, H.argb, SCREEN_W * sizeof *H.argb);
+        SDL_RenderCopy(H.ren, H.tex, NULL, &r);
+    }
+    SDL_RenderPresent(H.ren);
+}
+
 int host_frame(void)
 {
     if (H.opt.headless)
         return headless_frame();
-    to_argb(H.argb);
-    SDL_UpdateTexture(H.tex, NULL, H.argb, SCREEN_W * sizeof *H.argb);
-    SDL_RenderClear(H.ren);
-    SDL_RenderCopy(H.ren, H.tex, NULL, NULL);
-    SDL_RenderPresent(H.ren);
+    present();
 
     const double freq = (double)SDL_GetPerformanceFrequency();
     int ticks = 0;
@@ -483,6 +574,8 @@ int host_frame(void)
                 longjmp(host_end, 2);
             if (e.type == SDL_JOYDEVICEADDED || e.type == SDL_JOYDEVICEREMOVED)
                 open_joystick();
+            if (e.type == SDL_RENDER_TARGETS_RESET || e.type == SDL_RENDER_DEVICE_RESET)
+                H.mask_w = 0; /* made again */
             if (e.type != SDL_KEYDOWN && e.type != SDL_KEYUP)
                 continue;
             /* Alt+Enter (the port's): full screen on / off; the game doesn't see that Enter */
@@ -491,6 +584,12 @@ int host_frame(void)
                  e.key.keysym.scancode == SDL_SCANCODE_KP_ENTER)) {
                 if (!e.key.repeat)
                     set_fullscreen(!H.fullscreen);
+                continue;
+            }
+            /* Alt+C (the port's): the CRT look on / off; the game doesn't see that C */
+            if ((e.key.keysym.mod & KMOD_ALT) && e.key.keysym.scancode == SDL_SCANCODE_C) {
+                if (e.type == SDL_KEYDOWN && !e.key.repeat)
+                    H.crt = !H.crt;
                 continue;
             }
             const int pc = pc_scancode(e.key.keysym.scancode);

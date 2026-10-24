@@ -66,6 +66,9 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 build/roc.exe game/ROC.EXE                          # the game: title, menus, levels
 build/roc.exe game/ROC.EXE --level 5                # a new game at level 5 (skips the title)
 build/roc.exe game/ROC.EXE --fullscreen             # the game in full screen (Alt+Enter toggles it)
+build/roc.exe game/ROC.EXE --crt                    # with the CRT look (Alt+C toggles it)
+# headless: a screenshot with the CRT look (640 x 400, the mask as a window that size shows it)
+build/roc.exe game/ROC.EXE --level 0 --pos 620,100 --player 770,250 --ticks 1800 --crt --screenshot out.png
 # headless: the title, Esc at tick 1000 (main menu), then Enter three times: a new game on Normal
 build/roc.exe game/ROC.EXE --ticks 6000 --hold 0x01:1000-1020,0x1c:1500-1520,0x1c:2000-2020,0x1c:2500-2520 --screenshot out.png
 # headless with files (ROC.CFG, roc.sco, saves) in a scratch folder: F2, Enter (slot 1), type "test", Enter
@@ -109,7 +112,9 @@ B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu)
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
 fly mode (Ctrl lands). F12 saves `shotNNN.png` and Alt+Enter switches between full screen (the
 desktop's resolution, the picture scaled to fit with black bars, no mouse pointer) and the window
-(both the port's; `--fullscreen` starts in full screen). In the menus: up / down or a line's
+(both the port's; `--fullscreen` starts in full screen). Alt+C (the port's) turns the CRT look on
+and off (`--crt` starts with it): RetroArch's 2xsal-level2-crt preset, and F12's screenshots then
+show it at 640 x 400. In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
 Heroes) and the saved games (saving writes the port's `ROCP.SGn` and the original's `ROC.SGn`;
 loading takes whichever of a slot's two is newer) live in the game's folder, or in
@@ -503,6 +508,21 @@ still time every sound, so the game behaves as it does with sound.
   output; stereo's left side is that too, the right is sharp (A4 438 / 441 Hz) at the same
   loudness, no clipping; the game runs with music on SDL's dummy drivers both ways; the headless
   runs are unchanged. Heard by the user both ways (the difference is audible).
+- Port, the CRT look (the port's; asked for by the user): `--crt` / Alt+C, after RetroArch's
+  `2xsal-level2-crt.slangp` (read from the shaders in `C:\RetroArch-Win64`: two passes,
+  `2xsal-level2.slang` at 2x with nearest sampling, then `dotmask.slang` scaled to the window with
+  linear filtering, mask style 3, maskDark 0.6, maskLight 1.4). New `src/crt.c`: the 2xSaL pass on
+  the CPU (320 x 200 to 640 x 400; the 13 taps gathered by rows so GCC vectorizes the maths: about
+  4 ms a frame here, 12.9 before) and the mask's pattern. In `src/host.c` SDL scales the 640 x 400
+  texture smoothly into the picture's place, now worked out in the output's pixels (`view_rect`,
+  replacing SDL_RenderSetLogicalSize, same letterboxing), and a mask texture one texel per pixel is
+  drawn over it with the custom blend 2 x src x dst. The shader's linear-light multiply (c^2.2 x
+  m)^(1/2.2) is c x m^(1/2.2), so the mask is a plain multiply by 1.1653 / 0.7929, stored halved.
+  A renderer without custom blends (SDL's software one) gets 2xSaL alone, with a message.
+  Verified: an independent numpy version of the two shaders (linear light, as written) matches
+  the `--crt` screenshots within 1 (a handful of pixels 2) on forest1, the title and castle; the
+  plain screenshots are byte for byte as before; the window runs on SDL's dummy driver both ways.
+  Not yet seen on a real screen (the mask's alignment, Alt+C, full screen).
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -511,5 +531,5 @@ still time every sound, so the game behaves as it does with sound.
 ## Next steps
 
 1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; a build on Linux and
-   macOS; the interactive window, the sound effects, the animated tiles and the
+   macOS; the CRT look on a real screen (`--crt`, Alt+C, in full screen too); the interactive window, the sound effects, the animated tiles and the
    joystick (with a real controller) haven't been tried by a person yet.

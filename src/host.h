@@ -37,6 +37,7 @@ typedef struct {
     const host_hold_t *holds;    /* headless: the keys to hold */
     int hold_count;
     bool fullscreen;             /* start in full screen (Alt+Enter toggles it) */
+    bool crt;                    /* start with the CRT look (Alt+C toggles it; crt.h) */
     bool joystick;               /* use the joystick whatever ROC.CFG says (headless: the
                                   * scripted one) */
 } host_options_t;

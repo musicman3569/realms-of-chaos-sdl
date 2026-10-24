@@ -28,6 +28,7 @@ add_executable(roc
     src/rxdemon.c
     src/ui.c
     src/host.c
+    src/crt.c
     src/game.c
     src/save.c
     src/audio.c

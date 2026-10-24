@@ -30,7 +30,8 @@
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
  * --no-music without music; the music plays in stereo on two emulated OPL2s (the driver's own
  * stereo, which ROC.EXE never turns on), or with --mono-music as the original plays it. --fullscreen starts in full screen (Alt+Enter switches between full
- * screen and the window at any time). --joystick uses the joystick (a game controller or any joystick
+ * screen and the window at any time). --crt starts with the CRT look, after RetroArch's
+ * 2xsal-level2-crt preset (Alt+C turns it on and off; screenshots then show it at 640 x 400). --joystick uses the joystick (a game controller or any joystick
  * SDL finds) even if ROC.CFG doesn't turn it on. */
 #include "almidi.h"
 #include "archive.h"
@@ -66,7 +67,8 @@ typedef struct {
     const char *hold_names[MAX_HOLDS];
     host_hold_t holds[MAX_HOLDS];
     int hold_count;
-    bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick, fullscreen;
+    bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick, fullscreen,
+        crt;
     bool mono_music;
 } options_t;
 
@@ -161,6 +163,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->joystick = true;
         else if (!strcmp(a, "--fullscreen"))
             o->fullscreen = true;
+        else if (!strcmp(a, "--crt"))
+            o->crt = true;
         else if (!strcmp(a, "--mono-music"))
             o->mono_music = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
@@ -317,7 +321,7 @@ int main(int argc, char **argv)
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
                         "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick] "
-                        "[--fullscreen] [--mono-music]\n");
+                        "[--fullscreen] [--crt] [--mono-music]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
@@ -350,6 +354,7 @@ int main(int argc, char **argv)
 
     const host_options_t ho = {.headless = headless, .ticks = opt.ticks, .holds = opt.holds,
                                .hold_count = opt.hold_count, .fullscreen = opt.fullscreen,
+                               .crt = opt.crt,
                                .joystick = opt.joystick};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
