@@ -330,6 +330,8 @@ int main(int argc, char **argv)
     const bool headless = opt.screenshot != NULL;
     save_set_dir(opt.data_dir ? opt.data_dir : headless ? NULL : folder);
     config_load();
+    if (!save_load_tables(opt.exe))
+        fprintf(stderr, "roc: can't read the animator table; the original's saved games won't load\n");
     Sess.diff_mode = (uint8_t)opt.difficulty;
     /* the holds name keys by the layout just read */
     const int holds = opt.hold_count;

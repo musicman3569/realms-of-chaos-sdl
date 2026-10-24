@@ -659,9 +659,10 @@ volumes, StatusOn, MessageOn, JoystickOn, BloodOn, BloodPass[20], GammaCorrect.
 
 **The port**: the windows block on `host_frame` as the original blocks on WAITTICS; WINUP keeps
 the screen (SAVEPAGE), WINCLEAR puts it back (REFRESHPAGE redraws the level), WINDOWN leaves the
-window for the next frame. The port's saved games are its own (`ROCP.SG0-7`, `ROCP.SGT`): the same
-header ("ROCP", version 1) and every object and the game's state (pointers as object numbers,
-images as `_Img` indexes, the maps and palettes, `_DragonMove`).
+window for the next frame. The port saves games in its own format (`ROCP.SG0-7`, `ROCP.SGT`): the
+same header ("ROCP", version 1) and every object and the game's state (pointers as object numbers,
+images as `_Img` indexes, the maps and palettes, `_DragonMove`). It also loads the original's
+`ROC.SG0-7` (see "The original's saved games").
 
 ## Bolo cats and the snake platform
 
@@ -1154,3 +1155,54 @@ throw (half without one). The port doesn't save `JoystickOn` off for a missing j
 runs have a scripted joystick (`--joystick` with holds `joyleft`... `button0`...); their key holds
 now press and release keys at their ends, as the keyboard's events do, so the joystick can write
 into the keys too (no earlier test changes).
+
+## The original's saved games
+
+RXSAVEF.C. **SAVEGAME(FileName, FileDesc)** writes `ROC.SGn`: "ROCX" and a 0, the version 'd', the
+20-character description, `_level` (RETRIEVELEVEL reads that byte back; 'd' means none), the
+object count (a word), then the maps as they lie in memory: the BGMAP (Rows, Cols, the cells, and
+6 bytes past them: Cols x Rows x 2 + 8) and the FGMAP (Cols as a word, the cells), then the
+globals in this order: `_OrgX`, `_OrgY`, `_Vine_x`, `_Vine_y`, `_hitagain`, `_MonsterCounter`,
+`_MonsterNumber` as a word (with `_FreeHit`), the inventory's bit-field byte (copied through a
+stack byte, so bits 6-7 are junk), HitPoints[2], MaxHitPoints[2], `_OldMaxHitPoints[2]`,
+WeaponStatus[2], `_LightningFlag`, `_DiffMode`, `_FreeHit`, Score, `_OldScore`, `_NextScoreUp`,
+`_OldNextScoreUp`, Gems, `_OldGems`, `_WindowXsize` (word), `_WindowYsize`, `_CenterOff`,
+`_HitRelease`, `_WhippingFN / AI / FC / FCM`, `_Looking`, the DAC (GETPALETTE, 768 bytes),
+`_GameFlags`, `_OldGameFlags`, `_QuitGame`, `_quitflag`, the level's four "in level" counts, the
+found counts each with its total (`_GemFound`, `_GemTotal`...), `_HourTotal / _MinuteTotal /
+_SecondTotal`, `_GemTotal` again, `_MinuteInLevel`, `_SecondInLevel`, the four finals,
+`_TimerFix` (word), `_TimerTics`, `_NextSecond` and `_ReturnLevel`. Then the objects
+(STOREOBJECTINFO), main list, fore list, slow list, then the off-screen list tagged 3 / 4 / 5 by
+its home list: list, priority, the Animator's and the OldAnimator's index in the table at
+DS:059a (178 near pointers, every animator a saved object can have, ending with OFFKILLER; a
+missing one is a fatal error), the index of ImageID in `_Img` (counted as far pointers from
+ArrowID: the port's IMG_ numbers), a byte for the global that points at it (1 `_You`, 2 `_Boss`
+and `_Neck[0]`, 3 `_HitPts`, 4-7 `_Neck[1-4]`), OBJstruct's Blinks .. Counter (Link, List, ImageID,
+Animator and UserPtr are left out) and USERstruct's Friction .. SurfaceFlags (23 bytes; the
+OldAnimator and Name pointers are left out). The main and off lists skip DOREFLECTION objects and
+objects of priority 0x18 with NULLANIMATOR (the raft's front piece).
+
+**RESTOREGAME** (instead of INITLEVEL, after LOADLEVEL) reads it all back, sets the scroll bounds
+and `_YouWalkID`..., and MAKEOBJECT makes each object: Flags | 8, ADDPLINKNODE into its list by
+priority (so objects of equal priority come back in reverse order), PARENTLISTADD for what
+reflects on levels 8 and 9, and GenericVar[2] = 0 for SWAMPRAFT, which then makes a new front
+piece. Near pointers kept in GenericVar (a wisp light's wisp, the raft's front) are restored as
+they were and point at nothing in particular; `_Circle1` positions are offsets in its own
+segment, so they survive. The palette read is `_SavePal`, which the level fades to.
+
+**Tile numbers.** LOADLEVEL compacts each background layer with TILEBUFFOPTI (LOADLEV.C:230, all
+levels but 25 and the title / reader): it marks the tiles the map and `_AnTil` use, moves the
+highest used tile into each unused place from the bottom up (renumbering the map's cells and
+`_AnTil`), writes the layer to a temporary file (`TILEBUFn`) and reads back only those. So a
+saved map numbers its tiles as compacted, not as in the `.bg`. The port doesn't compact; to read
+an original save it replays TILEBUFFOPTI on the level as loaded (`animtile_opti_numbers`) and
+turns each saved cell's tile back into the `.bg`'s number. Checked on the four saves in the game
+folder: before, 4517 of castle1's 7540 cells had other tiles than the level; after, 3 (bricks
+the player brought down), and the other levels likewise (forest1: its 7 waterfall cells,
+mid-cycle).
+
+**The port** (`src/save.c`): each slot is the newer (by the file's time) of `ROCP.SGn` and
+`ROC.SGn`; saving always writes `ROCP.SGn`, so a game saved last in either program is the one
+the menus show and load. ROC.SGT (the original's reader save, deleted once restored) is never
+read. The animator table is read from ROC.EXE at start. Unlike the original, the port gives a
+wisp's lights the nearest wisp (the pointer it kept is meaningless) and leaves `_quitflag` at 0.

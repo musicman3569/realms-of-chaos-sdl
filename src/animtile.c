@@ -228,6 +228,62 @@ static void init_an_til(int level)
     }
 }
 
+/* LOADLEV.C:230 TILEBUFFOPTI, which LOADLEVEL runs on each background layer (240 tiles at 0,
+ * 0xf0 and 0x1e0) of every level but 25 and the title / reader: it marks the tiles the map and
+ * _AnTil use, then, from the bottom, moves the highest used tile into each unused place below it
+ * (renumbering the map's cells and _AnTil with it) until none is left, and keeps that many
+ * tiles. The port draws from the .bg as it is and never does this, but the original's saved games
+ * hold the renumbered map, so this replays it on the level as loaded: tile[n] is the .bg's number
+ * of the original's tile n. */
+void animtile_opti_numbers(uint16_t tile[512])
+{
+    for (int n = 0; n < 512; n++)
+        tile[n] = (uint16_t)n;
+    const level_t *lv = G.lv;
+    if (G.level == 25 || G.level >= 27)
+        return;
+    init_an_til(G.level);
+    const int cells = lv->rows * lv->cols;
+    for (int layer = 0; layer < 3; layer++) {
+        const unsigned base = layer * 0xF0u, count = lv->tile_count[layer];
+        if (count == 0 || count > 0x200 - base)
+            continue;
+        uint8_t used[0x200] = {0};
+        uint16_t who[0x200];         /* the .bg tile now numbered n (base + n) */
+        unsigned high = 0;
+        for (unsigned n = 0; n < count; n++)
+            who[n] = (uint16_t)n;
+        for (int c = 0; c < cells; c++) {
+            const unsigned t = lv->bg[c] & 0x1FF;
+            if (t >= base && t < base + count) {
+                used[t - base] = 1;
+                if (t - base > high)
+                    high = t - base;
+            }
+        }
+        for (int k = 0; k < 3; k++)
+            for (int r = 0; r < 23; r++) {
+                const unsigned t = an_til[r][k];
+                if (t >= base && t < base + count) {
+                    used[t - base] = 1;
+                    if (t - base > high)
+                        high = t - base;
+                }
+            }
+        for (unsigned u = 0; u < high; u++) {
+            if (used[u])
+                continue;
+            who[u] = who[high];
+            used[u] = 1;
+            used[high] = 0;
+            while (high > 0 && !used[high])
+                high--;
+        }
+        for (unsigned n = 0; n < count; n++)
+            tile[base + n] = (uint16_t)(base + who[n]);
+    }
+}
+
 /* _AnimateBack(rate, 3, _AnTil[row][0..2]) */
 static void back3(uint16_t rate, int row)
 {

@@ -108,7 +108,8 @@ B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu)
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
 fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
-Heroes) and the saved games (the port's own `ROCP.SG0-7`) live in the game's folder, or in
+Heroes) and the saved games (the port's own `ROCP.SG0-7`; the original's `ROC.SG0-7` load too,
+whichever of a slot's two is newer) live in the game's folder, or in
 `--data-dir`; headless runs touch no files without `--data-dir`. `--level N` starts a new game
 there without the hero's lightning entrance (the title's "Play a New Game" has it), as the
 headless tests always started. In headless runs the fades are instant, the run stops wherever it
@@ -458,6 +459,18 @@ still time every sound, so the game behaves as it does with sound.
   does, B changes hero as Space does, A jumps as Ctrl does (identical runs); Start opens the main
   menu, B leaves it, A picks a new game; at F10's prompt X and Y quit and A goes back; on the title
   A alone starts a game; the documented keyboard runs are unchanged.
+- Port, the original's saved games (notes "The original's saved games"): `src/save.c` loads
+  `ROC.SG0-7` (RESTOREGAME / MAKEOBJECT): the header, the maps, the globals and the objects, with
+  the animators numbered by the DS:059a table (read from ROC.EXE), images by `_Img` index and
+  `_You` / `_Boss` / `_HitPts` / `_Neck` by the record's global byte; each slot is the newer of
+  `ROCP.SGn` and `ROC.SGn` (saving still writes `ROCP.SGn`). The saved maps number the tiles as
+  TILEBUFFOPTI compacted them, so `animtile_opti_numbers` (`src/animtile.c`) replays it and the
+  cells are translated back. Verified headless with the game folder's ROC.SG0-2 in a scratch
+  `--data-dir`: the load menu lists "Lev1", "Lev2", "ep2.1"; each loads (castle1, Ross's room, the
+  dragon) with the saved view, hit points, gems, score and found counts, the maps right (checked
+  cell by cell against the levels: only cells the player changed differ) and plays on for 20000
+  ticks; whichever of ROC.SG0 / ROCP.SG0 is newer is the one loaded; the documented runs and the
+  port's own save / load are unchanged. The original's ROC.SGT (a reader save) isn't read.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -465,8 +478,9 @@ still time every sound, so the game behaves as it does with sound.
 
 ## Next steps
 
-1. The original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
-   reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the OPL3 stereo paths of
+1. Writing the original's saved games too (the port reads ROC.SG0-7 but saves only its own
+   ROCP format; SAVEGAME's format is in the notes, and the cells would need TILEBUFFOPTI's
+   numbering); the OPL3 stereo paths of
    AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
    Linux and macOS; the interactive window, the sound, the animated tiles and the joystick (with
    a real controller) haven't been tried by a person yet.

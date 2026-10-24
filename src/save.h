@@ -3,11 +3,10 @@
  *
  * ROC.CFG and roc.sco are the original's files, read and written in its format (the port uses
  * the same keys and settings, and leaves what it doesn't use, such as the sound card, as it
- * found it). Saved games are the port's own: the original's SAVEGAME writes its objects with
- * DOS pointers, which mean nothing to the port, so the port keeps its slots in ROCP.SG0-7 (and
- * ROCP.SGT for the game the reader leaves, ROC.SGT in the original) and leaves the original's
- * ROC.SG0-7 alone. Their header is the original's (an ident, a version, the 20-character
- * description, the level); the rest is the port's state. */
+ * found it). The port saves games in its own format, ROCP.SG0-7 (and ROCP.SGT for the game the
+ * reader leaves, ROC.SGT in the original), with the original's header (an ident, a version, the
+ * 20-character description, the level) and the port's whole state after it. It also loads the
+ * original's ROC.SG0-7 (RESTOREGAME / MAKEOBJECT), and never writes them. */
 #ifndef ROC_SAVE_H
 #define ROC_SAVE_H
 
@@ -46,7 +45,10 @@ typedef struct {
 void hs_read(hscore_t *h);
 void hs_write(const hscore_t *h);
 
-/* Saved games: slots 1-8, or RESTORE_TEMP. */
+/* Saved games: slots 1-8, or RESTORE_TEMP. Each slot is the newer of the port's ROCP.SGn and
+ * the original's ROC.SGn (read only: the port saves in its own format); save_load_tables reads
+ * the animator table the original's files number their animators by from ROC.EXE. */
+bool save_load_tables(const char *exe_path);
 bool save_game(int slot, const char *desc);        /* SAVEGAME: false on a file error */
 bool save_describe(int slot, char desc[21]);       /* the slot's description, if it holds a game */
 int save_level(int slot);                          /* RETRIEVELEVEL: its level, or SAVE_NONE */

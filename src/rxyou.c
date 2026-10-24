@@ -1580,7 +1580,7 @@ int screen_center(obj_t *o)
 }
 
 /* The hero's sprite sets (_YouWalkID...): the male's or the female's, by _GameFlags bit 2. */
-static void set_hero_sets(void)
+void set_hero_sets(void)
 {
     if (G.game_flags & 4) {
         G.you_walk = IMG_MALWALK, G.you_jump = IMG_MALJUMP, G.you_duck = IMG_MALDUCK;

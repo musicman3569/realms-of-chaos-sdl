@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 extern int8_t dragon_move[4][180]; /* rxswamp.c: _DragonMove */
 
@@ -212,7 +213,8 @@ void hs_write(const hscore_t *h)
 /* Saved games                                                                                 */
 
 enum { SAVE_VERSION = 1, HEADER = 5 + 1 + 20 + 1 };
-static const char ident[5] = "ROCP"; /* (the original's is "ROCX", version 'd') */
+static const char ident[5] = "ROCP";
+static const char orig_ident[5] = "ROCX"; /* the original's, with version 'd' */
 
 static void slot_name(char *out, size_t n, int slot)
 {
@@ -227,7 +229,56 @@ typedef struct {
     uint8_t *p;
     size_t len, cap, pos;
     bool bad;
+    bool original;               /* (a slot read from the original's ROC.SGn) */
 } buf_t;
+
+/* The animators' numbers in the original's saved games: the table at DS:059a (STOREOBJECTINFO
+ * and MAKEOBJECT), every Animator a saved object can have, ending with OFFKILLER. */
+enum { ANIM_TABLE = 0x059A, ANIM_MAX = 400, DGROUP_PARA = 0x3A77 };
+static uint16_t anim_table[ANIM_MAX];
+static int anim_count;
+
+bool save_load_tables(const char *exe_path)
+{
+    anim_count = 0;
+    FILE *f = fopen(exe_path, "rb");
+    uint8_t mz[10];
+    bool ok = f && fread(mz, 1, sizeof mz, f) == sizeof mz && mz[0] == 'M' && mz[1] == 'Z';
+    if (ok)
+        ok = fseek(f, (long)rd16(mz + 8) * 16 + DGROUP_PARA * 16L + ANIM_TABLE, SEEK_SET) == 0;
+    while (ok && anim_count < ANIM_MAX) {
+        uint8_t w[2];
+        ok = fread(w, 1, 2, f) == 2;
+        if (ok)
+            anim_table[anim_count++] = rd16(w);
+        if (ok && rd16(w) == A_OFFKILLER)
+            break;
+    }
+    if (f)
+        fclose(f);
+    if (!ok || anim_count == ANIM_MAX)
+        anim_count = 0;
+    return anim_count > 0;
+}
+
+/* Which file a slot (1-8) is read from: the original's ROC.SGn when it's newer than the port's
+ * ROCP.SGn or there's no ROCP.SGn, so a game saved last in either is the one loaded. Saving
+ * always writes ROCP.SGn. The reader's ROC.SGT is never read (the original deletes it once
+ * restored). */
+static bool original_slot(int slot)
+{
+    if (!enabled || slot < 1 || slot > SAVE_SLOTS)
+        return false;
+    char name[16], path[1100];
+    struct stat orig, port;
+    snprintf(name, sizeof name, "ROC.SG%c", '0' + slot - 1);
+    path_of(path, sizeof path, name);
+    if (stat(path, &orig) != 0)
+        return false;
+    slot_name(name, sizeof name, slot);
+    path_of(path, sizeof path, name);
+    return stat(path, &port) != 0 || orig.st_mtime > port.st_mtime;
+}
 
 static void put(buf_t *b, const void *data, size_t n)
 {
@@ -416,11 +467,15 @@ bool save_game(int slot, const char *desc)
     return ok;
 }
 
-/* Read a slot's file. */
+/* Read a slot's file: the port's, or the original's (both start with the same header). */
 static bool load_slot(int slot, buf_t *b)
 {
     char name[16], path[1100];
-    slot_name(name, sizeof name, slot);
+    const bool original = original_slot(slot);
+    if (original)
+        snprintf(name, sizeof name, "ROC.SG%c", '0' + slot - 1);
+    else
+        slot_name(name, sizeof name, slot);
     path_of(path, sizeof path, name);
     memset(b, 0, sizeof *b);
     FILE *f = enabled ? fopen(path, "rb") : NULL;
@@ -431,7 +486,10 @@ static bool load_slot(int slot, buf_t *b)
     while ((n = fread(chunk, 1, sizeof chunk, f)) > 0)
         put(b, chunk, n);
     fclose(f);
-    if (b->bad || b->len < HEADER || memcmp(b->p, ident, 5) || b->p[5] != SAVE_VERSION) {
+    b->original = original;
+    const bool ok = original ? !memcmp(b->p, orig_ident, 5) && b->p[5] == SAVE_NONE
+                             : !memcmp(b->p, ident, 5) && b->p[5] == SAVE_VERSION;
+    if (b->bad || b->len < HEADER || !ok) {
         free(b->p);
         b->p = NULL;
         return false;
@@ -476,6 +534,194 @@ static obj_t *obj_ref(buf_t *b, obj_t **all, int count)
     return all && n >= 0 && n < count ? all[n] : NULL;
 }
 
+/* RXSAVEF.C:371 RESTOREGAME and :515 MAKEOBJECT: a game the original saved. After the header,
+ * the object count, the maps as they are in memory (BGMAP: Rows, Cols, the cells and 6 bytes
+ * past them; FGMAP: Cols as a word, the cells), about 60 globals and the objects: main, fore and
+ * slow lists, then the off-screen list (3-5: its home list), each as list, priority, the
+ * animator's and the old animator's numbers in the DS:059a table, the _Img index of its image, a
+ * byte for the globals pointing at it, OBJstruct from Blinks to Counter (no pointers) and
+ * USERstruct from Friction to SurfaceFlags. SAVEGAME leaves out the reflections (MAKEOBJECT makes
+ * them again) and objects of priority 0x18 with NULLANIMATOR, the raft's front piece (the raft
+ * makes a new one: its GenericVar[2] is cleared). The objects go into their lists by priority
+ * (ADDPLINKNODE), so equal priorities come back in reverse order, as in the original. */
+static bool restore_original(buf_t *b)
+{
+    b->pos = HEADER;
+    const int count = get16(b);
+    const int rows = get8(b), cols = get8(b);
+    if (rows != G.lv->rows || cols != G.lv->cols || anim_count == 0)
+        return false;
+    const int cells = rows * cols;
+    uint8_t skip[6];
+    /* the saved cells number the tiles as TILEBUFFOPTI left them */
+    uint16_t tile[512];
+    animtile_opti_numbers(tile);
+    for (int i = 0; i < cells; i++) {
+        const uint16_t v = get16(b);
+        G.lv->bg[i] = (uint16_t)((v & 0xFE00) | tile[v & 0x1FF]);
+    }
+    get(b, skip, 6);
+    get(b, skip, 2);
+    get(b, G.lv->fg, (size_t)cells);
+
+    G.org_x = get16(b);
+    G.org_y = get16(b);
+    G.vine_x = get16(b);
+    G.vine_y = get16(b);
+    G.hitagain = (int16_t)get16(b);
+    G.monster_counter = (uint8_t)get16(b);
+    G.monster_number = get8(b);
+    G.free_hit = get8(b);
+    const uint8_t inv_flags = get8(b); /* (bits 6 and 7 are whatever was on the stack) */
+    get(b, Inv.hit_points, 2);
+    get(b, Inv.max_hit_points, 2);
+    get(b, G.old_inv.max_hit_points, 2);
+    get(b, Inv.weapon_status, 2);
+    G.lightning_flag = (int8_t)get8(b);
+    G.diff_mode = get8(b);
+    G.free_hit = get8(b);
+    Inv.score = get32(b);
+    G.old_inv.score = get32(b);
+    G.next_score_up = get32(b);
+    G.old_next_score_up = get32(b);
+    Inv.gems = get16(b);
+    G.old_inv.gems = get16(b);
+    G.window_xsize = get16(b);
+    G.window_ysize = get8(b);
+    G.center_off = (int8_t)get8(b);
+    G.hit_release = get8(b);
+    G.whip_fn = (int8_t)get8(b);
+    G.whip_ai = (int8_t)get8(b);
+    G.whip_fc = (int8_t)get8(b);
+    G.whip_fcm = (int8_t)get8(b);
+    G.looking = (int8_t)get8(b);
+    get(b, L.save_pal, sizeof L.save_pal); /* the palette shown (GETPALETTE) */
+    G.game_flags = get16(b);
+    G.old_game_flags = get16(b);
+    get8(b); /* _QuitGame */
+    get8(b); /* _quitflag */
+    G.gem_in_level = get16(b);
+    G.enemy_in_level = get16(b);
+    G.statue_in_level = get16(b);
+    G.secret_in_level = get16(b);
+    G.gem_found = get16(b);
+    L.gem_total = get16(b);
+    G.enemy_found = get16(b);
+    L.enemy_total = get16(b);
+    G.statue_found = get16(b);
+    L.statue_total = get16(b);
+    G.secret_found = get16(b);
+    L.secret_total = get16(b);
+    L.hour_total = get16(b);
+    L.minute_total = get16(b);
+    L.second_total = get16(b);
+    L.gem_total = get16(b); /* (_GemTotal twice) */
+    G.minute_in_level = get8(b);
+    G.second_in_level = get8(b);
+    L.gem_final = get16(b);
+    L.enemy_final = get16(b);
+    L.statue_final = get16(b);
+    L.secret_final = get16(b);
+    G.timer_fix = (uint8_t)get16(b);
+    G.level_tics = get32(b);
+    G.next_second = get32(b);
+    L.return_level = get8(b);
+    Inv.flags = inv_flags & 0x3F;
+    G.max_monster_number = G.diff_mode < 3 ? 1 : G.diff_mode == 3 ? 2 : 3;
+
+    game_clear_objects();
+    G.you = G.boss = G.hit_pts = NULL;
+    memset(G.neck, 0, sizeof G.neck);
+    for (int i = 0; i < count && !b->bad; i++) {
+        const int list = get8(b), priority = get8(b);
+        const unsigned animator = get16(b), old_animator = get16(b), image = get16(b);
+        const int global = get8(b);
+        obj_t *o = calloc(1, sizeof *o);
+        if (!o) {
+            b->bad = true;
+            break;
+        }
+        o->blinks = get16(b);
+        o->blink_ct = get16(b);
+        o->draw_on = get16(b);
+        o->draw_off = get16(b);
+        o->blink_color = get16(b);
+        o->flags = get16(b) | 8;
+        o->xdir = get8(b);
+        o->ydir = get8(b);
+        o->x = get16(b);
+        o->y = get16(b);
+        o->xpart = get16(b);
+        o->ypart = get16(b);
+        o->xspeed = (int16_t)get16(b);
+        o->yspeed = (int16_t)get16(b);
+        o->xsize = get16(b);
+        o->ysize = get16(b);
+        o->update = get16(b);
+        o->counter = get16(b);
+        o->friction = get8(b);
+        o->frame_no = get8(b);
+        o->max_frames = get8(b);
+        o->anim_inc = (int8_t)get8(b);
+        o->frame_count = get16(b);
+        o->frame_count_max = get16(b);
+        o->down_offset = get8(b);
+        o->up_offset = get8(b);
+        for (int k = 0; k < 6; k++)
+            o->gv[k] = (int16_t)get16(b);
+        o->surface_flags = get8(b);
+        if (b->bad || animator >= (unsigned)anim_count || old_animator >= (unsigned)anim_count) {
+            free(o);
+            b->bad = true;
+            break;
+        }
+        o->image = game_image((int)image);
+        o->animator = anim_table[animator];
+        o->old_animator = anim_table[old_animator];
+        switch (global) {
+        case 1: G.you = o; break;
+        case 2: G.boss = G.neck[0] = o; break;
+        case 3: G.hit_pts = o; break;
+        case 4: case 5: case 6: case 7: G.neck[global - 3] = o; break;
+        default: break;
+        }
+        o->priority = (int16_t)priority;
+        o->list = list < LIST_OFF ? list : list <= 5 ? list - LIST_OFF : LIST_MAIN;
+        obj_link(o, list < LIST_OFF ? list : LIST_OFF);
+        if (o->list == LIST_MAIN)
+            reflection_check(o);
+        if (o->animator == A_SWAMPRAFT)
+            o->gv[2] = 0;
+    }
+    /* A wisp's lights kept the wisp in GenericVar[0] as a near pointer, which means nothing once
+     * the objects are made again (nor did it in the original); the port gives each the nearest
+     * wisp, or lets it go if there's none. */
+    for (int id = 0; id < LIST_COUNT; id++) {
+        for (obj_t *o = G.list[id]; o; o = o->next) {
+            if (o->animator != A_DOWISP || (o->gv[1] != 1 && o->gv[1] != 2))
+                continue;
+            unsigned best = 0xFFFFFFFFu;
+            for (int k = 0; k < LIST_COUNT; k++) {
+                for (obj_t *w = G.list[k]; w; w = w->next) {
+                    if (w->animator != A_DOWISP || w->gv[1] != 0)
+                        continue;
+                    const unsigned d = (unsigned)abs((int16_t)(w->x - o->x)) +
+                                       (unsigned)abs((int16_t)(w->y - o->y));
+                    if (d < best) {
+                        best = d;
+                        o->parent = w;
+                    }
+                }
+            }
+            if (!o->parent)
+                o->animator = A_OFFKILLER;
+        }
+    }
+    set_hero_sets();
+    set_scroll_bounds(G.window_ysize, G.window_xsize);
+    return !b->bad;
+}
+
 bool restore_game(int slot)
 {
     buf_t b;
@@ -485,6 +731,16 @@ bool restore_game(int slot)
     if (b.p[HEADER - 1] != G.level) {
         free(b.p);
         return false;
+    }
+    if (b.original) {
+        const bool ok = restore_original(&b);
+        free(b.p);
+        G.whip_hit_count = 0;
+        G.quitflag = 0;
+        G.menu_coming = -1;
+        L.restore_x = G.org_x;
+        L.restore_y = G.org_y;
+        return ok;
     }
 
 #define G8(x) ((x) = get8(&b))
