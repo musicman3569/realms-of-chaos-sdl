@@ -667,7 +667,8 @@ leaves on Esc or jump (100), flashes the selected line's outline colour (font co
 1, entry 0) a step every 20 ticks and remembers each menu's line (DS:53e0). MAINMENU (title: New
 Game, Options, Load, Hall of Heroes, Read Me!, Quit; level: New Game, Options, Load, Save, Read
 Me!, Exit to Title, Quit), OPTIONMENU (Heroes' Status in a level, Messages, Display, Blood
-behind the blood password, Blood Password: old, new, again, Sound Volume), SAVEMENU / LOADMENU (8
+behind the blood password, Blood Password: old, new, again, Sound Volume; the port adds
+Enhancements), SAVEMENU / LOADMENU (8
 slots ROC.SG0-7: "ROCX", version 'd', a 20-character description, the level; an empty description
 is "* n *"), QUICKMENU (the last slot used, `_QuickFile`), PROMPTWIN ("quit to DOS.", "end this
 game.", "restore", "QuickSave over", "QuickRestore"). PERCENTWIN shows the time against the level's

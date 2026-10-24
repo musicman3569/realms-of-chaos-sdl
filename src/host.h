@@ -43,6 +43,13 @@ typedef struct {
 } host_options_t;
 
 bool host_init(const host_options_t *o);
+
+/* The port's display choices, as the Enhancements menu turns them on and off (Alt+C and
+ * Alt+Enter do too; they also change Enhance, so they're remembered). */
+bool host_crt(void);
+void host_set_crt(bool on);
+bool host_fullscreen(void);
+void host_set_fullscreen(bool on);
 void host_shutdown(void);
 
 /* Show the screen, wait for at least one timer tick, read the keyboard; the ticks since the

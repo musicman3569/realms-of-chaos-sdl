@@ -32,7 +32,9 @@
  * stereo, which ROC.EXE never turns on), or with --mono-music as the original plays it. The title's death
  * scream as the game starts is left out; --title-scream plays it as the original does. --fullscreen starts in full screen (Alt+Enter switches between full
  * screen and the window at any time). --crt starts with the CRT look, after RetroArch's
- * 2xsal-level2-crt preset (Alt+C turns it on and off; screenshots then show it at 640 x 400). --joystick uses the joystick (a game controller or any joystick
+ * 2xsal-level2-crt preset (Alt+C turns it on and off; screenshots then show it at 640 x 400).
+ * Game Options' Enhancements menu remembers these choices in ROCP.CFG; the flags hold for their
+ * run only. --joystick uses the joystick (a game controller or any joystick
  * SDL finds) even if ROC.CFG doesn't turn it on. */
 #include "almidi.h"
 #include "archive.h"
@@ -329,7 +331,6 @@ int main(int argc, char **argv)
     }
     game_no_objects = opt.no_objects;
     game_no_fall_check = opt.sweep;
-    game_title_scream = opt.title_scream;
 
     char err[256], path[1100], folder[1024];
     archive_t arc;
@@ -346,6 +347,7 @@ int main(int argc, char **argv)
     const bool headless = opt.screenshot != NULL;
     save_set_dir(opt.data_dir ? opt.data_dir : headless ? NULL : folder);
     config_load();
+    enhance_load();
     if (!save_load_tables(opt.exe))
         fprintf(stderr, "roc: can't read the animator table; the original's saved games won't load\n");
     Sess.diff_mode = (uint8_t)opt.difficulty;
@@ -357,8 +359,8 @@ int main(int argc, char **argv)
             return 2;
 
     const host_options_t ho = {.headless = headless, .ticks = opt.ticks, .holds = opt.holds,
-                               .hold_count = opt.hold_count, .fullscreen = opt.fullscreen,
-                               .crt = opt.crt,
+                               .hold_count = opt.hold_count, .fullscreen = opt.fullscreen || (!headless && Enhance.fullscreen),
+                               .crt = opt.crt || (!headless && Enhance.crt),
                                .joystick = opt.joystick};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
@@ -368,7 +370,8 @@ int main(int argc, char **argv)
     if (Sess.sound_voices < 1)
         Sess.sound_voices = 8;
     const bool adlib = al_load_tables(opt.exe);
-    al_set_stereo(!opt.mono_music);
+    al_set_stereo(!opt.mono_music && Enhance.stereo_music);
+    game_title_scream = opt.title_scream || Enhance.title_scream;
     audio_init(!headless && !opt.no_sound && Sess.sound_card != -1,
                adlib && !headless && !opt.no_music && Sess.music_card != -1, Sess.sound_voices);
     sound_init(&arc, Sess.sound_card != -1, Sess.sound_voices);
@@ -385,6 +388,7 @@ int main(int argc, char **argv)
     }
     game_keep_session();
     config_save();
+    enhance_save();
     game_shutdown();
     audio_shutdown();
     host_shutdown();

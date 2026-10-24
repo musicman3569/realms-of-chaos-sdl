@@ -125,6 +125,54 @@ void config_save(void)
 }
 
 /* ------------------------------------------------------------------------------------------ */
+/* ROCP.CFG (the port's)                                                                       */
+
+enhance_t Enhance = {.stereo_music = true};
+
+static const struct {
+    const char *name;
+    bool *on;
+} enhance_names[] = {
+    {"crt", &Enhance.crt},
+    {"fullscreen", &Enhance.fullscreen},
+    {"stereo_music", &Enhance.stereo_music},
+    {"title_scream", &Enhance.title_scream},
+};
+enum { ENHANCE_NAMES = sizeof enhance_names / sizeof enhance_names[0] };
+
+void enhance_load(void)
+{
+    if (!enabled)
+        return;
+    char path[1100];
+    path_of(path, sizeof path, "ROCP.CFG");
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+    char line[128];
+    while (fgets(line, sizeof line, f)) {
+        char *eq = strchr(line, '=');
+        if (!eq)
+            continue;
+        *eq = 0;
+        for (int i = 0; i < ENHANCE_NAMES; i++)
+            if (!strcmp(line, enhance_names[i].name))
+                *enhance_names[i].on = eq[1] == '1';
+    }
+    fclose(f);
+}
+
+void enhance_save(void)
+{
+    char text[512];
+    size_t n = 0;
+    for (int i = 0; i < ENHANCE_NAMES; i++)
+        n += (size_t)snprintf(text + n, sizeof text - n, "%s=%d\n", enhance_names[i].name,
+                              *enhance_names[i].on);
+    write_file("ROCP.CFG", text, n);
+}
+
+/* ------------------------------------------------------------------------------------------ */
 /* roc.sco (HSCORE, 594 bytes)                                                                 */
 
 enum { HS_SIZE = 0x252 };

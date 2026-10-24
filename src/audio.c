@@ -606,3 +606,21 @@ void music_continue(void)
     M.paused = false;
     unlock();
 }
+
+void music_set_stereo(bool on)
+{
+    if (!M.open) {
+        al_set_stereo(on);
+        return;
+    }
+    lock();
+    if (on != al_stereo()) {
+        al_set_stereo(on);
+        al_init();
+        midi_reset();
+        M.applied = -1;
+        M.next = 0;
+        M.pos_us = 0;
+    }
+    unlock();
+}

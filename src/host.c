@@ -6,6 +6,7 @@
 #include "crt.h"
 #include "engine.h"
 #include "png.h"
+#include "save.h"
 
 #include <SDL.h>
 
@@ -114,6 +115,27 @@ static void set_fullscreen(bool on)
     }
     H.fullscreen = on;
     SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
+}
+
+bool host_crt(void)
+{
+    return H.crt;
+}
+
+void host_set_crt(bool on)
+{
+    H.crt = on;
+}
+
+bool host_fullscreen(void)
+{
+    return H.fullscreen;
+}
+
+void host_set_fullscreen(bool on)
+{
+    if (H.win && on != H.fullscreen)
+        set_fullscreen(on);
 }
 
 bool host_init(const host_options_t *o)
@@ -582,14 +604,16 @@ int host_frame(void)
             if (e.type == SDL_KEYDOWN && (e.key.keysym.mod & KMOD_ALT) &&
                 (e.key.keysym.scancode == SDL_SCANCODE_RETURN ||
                  e.key.keysym.scancode == SDL_SCANCODE_KP_ENTER)) {
-                if (!e.key.repeat)
+                if (!e.key.repeat) {
                     set_fullscreen(!H.fullscreen);
+                    Enhance.fullscreen = H.fullscreen;
+                }
                 continue;
             }
             /* Alt+C (the port's): the CRT look on / off; the game doesn't see that C */
             if ((e.key.keysym.mod & KMOD_ALT) && e.key.keysym.scancode == SDL_SCANCODE_C) {
                 if (e.type == SDL_KEYDOWN && !e.key.repeat)
-                    H.crt = !H.crt;
+                    Enhance.crt = H.crt = !H.crt;
                 continue;
             }
             const int pc = pc_scancode(e.key.keysym.scancode);

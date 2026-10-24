@@ -54,5 +54,8 @@ bool music_fade_active(void);
 bool music_playing(void);
 void music_pause(void);
 void music_continue(void);
+/* AL_MIDI's stereo on or off while the game runs (the port's): the driver starts again and the
+ * song from its beginning. */
+void music_set_stereo(bool on);
 
 #endif

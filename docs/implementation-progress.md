@@ -114,7 +114,11 @@ fly mode (Ctrl lands). F12 saves `shotNNN.png` and Alt+Enter switches between fu
 desktop's resolution, the picture scaled to fit with black bars, no mouse pointer) and the window
 (both the port's; `--fullscreen` starts in full screen). Alt+C (the port's) turns the CRT look on
 and off (`--crt` starts with it): RetroArch's 2xsal-level2-crt preset, and F12's screenshots then
-show it at 640 x 400. In the menus: up / down or a line's
+show it at 640 x 400. Game Options' last line, "Enhancements" (the port's), turns the port's
+additions on and off: CRT Filter, Full Screen, Music (Stereo / Mono) and Title Scream; the choices
+there (and Alt+C's and Alt+Enter's) are remembered in `ROCP.CFG` beside ROC.CFG, while the
+command line's `--crt`, `--fullscreen`, `--mono-music` and `--title-scream` hold for their run
+only (headless runs ignore the remembered CRT and full screen). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
 Heroes) and the saved games (saving writes the port's `ROCP.SGn` and the original's `ROC.SGn`;
 loading takes whichever of a slot's two is newer) live in the game's folder, or in
@@ -132,7 +136,8 @@ sides, the right a little sharp: a wide, chorused sound), or with `--mono-music`
 OPL2, exactly as it sounded on an AdLib or Sound Blaster. `--no-sound` and `--no-music` turn them
 off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
 still time every sound, so the game behaves as it does with sound. The port leaves out the
-title's death scream as the game starts (the user's choice); `--title-scream` plays it.
+title's death scream as the game starts (the user's choice); `--title-scream` (or the
+Enhancements menu) plays it.
 
 ## Completed
 
@@ -496,8 +501,8 @@ title's death scream as the game starts (the user's choice); `--title-scream` pl
   end; the documented runs are unchanged. Not loaded in the DOS game yet.
 - Port, full screen (the port's own): `--fullscreen` and Alt+Enter in `src/host.c`
   (SDL_WINDOW_FULLSCREEN_DESKTOP, the 320 x 200 picture scaled to fit with its shape kept, the
-  mouse pointer hidden; the game doesn't see that Enter). Not remembered between runs: ROC.CFG
-  has no place for it. Checked on SDL's dummy video driver (no error) and the documented headless
+  mouse pointer hidden; the game doesn't see that Enter). ROC.CFG has no place for it; the
+  Enhancements menu (below) remembers it in ROCP.CFG. Checked on SDL's dummy video driver (no error) and the documented headless
   runs are unchanged; not yet seen on a real screen.
 - Port, the AdLib stereo (notes "The AdLib music", "Stereo"): AL_MIDI's stereo path, read from
   the machine code, turns out to be dead code in ROC.EXE (AL_Init clears it; the original is mono
@@ -530,6 +535,21 @@ title's death scream as the game starts (the user's choice); `--title-scream` pl
   is as before. Verified: on SDL's disk audio driver with the music off the title writes only
   silence, and with `--title-scream` the scream; the documented title-to-new-game run gives the
   same report and screenshot either way.
+- Port, the Enhancements menu (the port's; asked for by the user): a last line in OPTIONMENU
+  (both the title's and the level's) opens ENHANCEMENTS (`enhance_menu` in `src/ui.c`, menu
+  position slot 5): CRT Filter, Full Screen, Music: Stereo / Mono and Title Scream, each turned
+  on or off at once. `src/save.c` keeps them in `Enhance` and `ROCP.CFG` (name=0/1 lines, written
+  when a line is picked and at exit; Alt+C and Alt+Enter change `Enhance` too); `main.c` starts
+  from ROCP.CFG with the command-line flags forcing their choice for the run only, and headless
+  runs ignore the remembered CRT and full screen so the tests' screenshots stay the same.
+  `host_set_crt` / `host_set_fullscreen` in `src/host.c`; `music_set_stereo` in `src/audio.c`
+  restarts AL_MIDI (al_init) in the other mode and the song from its start. The level's Game
+  Options window is 0x14 rows for its seven lines, as the main menu's. Verified headless: the
+  menus show on the title and in a level; picking CRT Filter shows the CRT look at once and writes
+  crt=1; Music and Title Scream toggle and are written, and the next run's menu shows them; a
+  scratch program playing a song on SDL's disk driver through audio.c switches from stereo (the
+  sides differ) to mono (identical, same loudness) mid-song; the documented runs are unchanged.
+  Not yet tried on a real screen (Full Screen from the menu can't be tested headless).
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,

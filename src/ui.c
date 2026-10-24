@@ -2,6 +2,7 @@
  * PUTWINPIC from the window assembly at 3f50). See ui.h. */
 #include "ui.h"
 
+#include "almidi.h"
 #include "audio.h"
 #include "game.h"
 #include "host.h"
@@ -706,8 +707,41 @@ static int check_password(int type)
     return 1;
 }
 
+/* The port's Enhancements menu (in OPTIONMENU): what the port adds to the original, each line
+ * turning one on or off at once. The choices are remembered in ROCP.CFG (Enhance). */
+static void enhance_menu(void)
+{
+    for (;;) {
+        const bool stereo = al_stereo();
+        const char *const menu[] = {host_crt() ? "CRT Filter: On" : "CRT Filter: Off",
+                                    host_fullscreen() ? "Full Screen: On" : "Full Screen: Off",
+                                    stereo ? "Music: Stereo" : "Music: Mono",
+                                    game_title_scream ? "Title Scream: On" : "Title Scream: Off",
+                                    NULL};
+        open_menu(menu, 0x28, 0x10, default_pal() ? "{2}ENHANCEMENTS" : "{3}ENHANCEMENTS");
+        const int sel = select_menu(menu, 5);
+        close_menu();
+        if (sel == 1) {
+            Enhance.crt = !host_crt();
+            host_set_crt(Enhance.crt);
+        } else if (sel == 2) {
+            host_set_fullscreen(!host_fullscreen());
+            Enhance.fullscreen = host_fullscreen();
+        } else if (sel == 3) {
+            Enhance.stereo_music = !stereo;
+            music_set_stereo(Enhance.stereo_music);
+        } else if (sel == 4) {
+            Enhance.title_scream = game_title_scream = !game_title_scream;
+        } else {
+            break;
+        }
+        enhance_save();
+    }
+}
+
 /* RXWINDF.C:256 OPTIONMENU: the heroes' status (in a level), the hints, the status display,
- * blood (behind the blood password), the password, and the sound (not ported). */
+ * blood (behind the blood password), the password, and the sound (not ported); and the port's
+ * Enhancements. */
 static void option_menu(void)
 {
     const bool in_level = G.level < LEVEL_TITLE;
@@ -716,14 +750,15 @@ static void option_menu(void)
         const char *const display = G.status_on ? "Display: On" : "Display: Off";
         const char *const blood = G.blood_on ? "Blood: On" : "Blood: Off";
         const char *const level_menu[9] = {"Heroes' Status", messages, display, blood,
-                                          "Blood Password", "Sound Volume", NULL};
+                                          "Blood Password", "Sound Volume", "Enhancements", NULL};
         const char *const title_menu[9] = {messages, display, blood, "Blood Password",
-                                          "Sound Volume", NULL};
+                                          "Sound Volume", "Enhancements", NULL};
         const char *const *menu = in_level ? level_menu : title_menu;
-        open_menu(menu, 0x28, 0x13, default_pal() ? "{2}GAME OPTIONS" : "{3}GAME OPTIONS");
+        open_menu(menu, 0x28, in_level ? 0x14 : 0x13,
+                  default_pal() ? "{2}GAME OPTIONS" : "{3}GAME OPTIONS");
         const int sel = select_menu(menu, 3);
         close_menu();
-        const int k = in_level ? sel - 1 : sel; /* 1 messages ... 5 sound */
+        const int k = in_level ? sel - 1 : sel; /* 1 messages ... 5 sound, 6 enhancements */
         if (k == 1) {
             G.game_flags &= 0x0F;
             G.old_game_flags = 0;
@@ -749,6 +784,8 @@ static void option_menu(void)
             }
         } else if (k == 5) {
             sound_menu();
+        } else if (k == 6) {
+            enhance_menu();
         } else if (in_level && sel == 1) {
             status_win(true);
         } else {

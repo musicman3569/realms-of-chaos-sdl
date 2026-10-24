@@ -25,6 +25,20 @@ void save_set_dir(const char *dir);
 bool config_load(void);
 void config_save(void);
 
+/* The port's enhancements (the Game Options' "Enhancements" menu; the original has none of
+ * them), remembered in ROCP.CFG, a text file of name=0/1 lines beside ROC.CFG: the choices made
+ * in the menu or with Alt+C / Alt+Enter. The command line's --crt, --fullscreen, --mono-music
+ * and --title-scream apply to their run only. */
+typedef struct {
+    bool crt;                    /* the CRT look (crt.h) */
+    bool fullscreen;
+    bool stereo_music;           /* AL_MIDI's stereo; off is the original's mono */
+    bool title_scream;           /* the title's scream as the game starts */
+} enhance_t;
+extern enhance_t Enhance;
+void enhance_load(void);
+void enhance_save(void);
+
 /* HSCORE (594 bytes): the best of each episode, and the best time of each level. */
 typedef struct {
     char score_name[3][24];
