@@ -20,6 +20,7 @@ static level_t lv;
 static const game_hooks_t *hooks;
 static int (*frame_hook)(void); /* _FrameHook */
 bool game_no_fall_check;
+bool game_title_scream;
 static uint16_t title_timer;    /* ticks towards the next TITLETIMER run */
 
 void game_render(void)
@@ -423,7 +424,11 @@ static int process_title(void)
         G.hitagain = 1;
         if (!L.title_voc_done) {
             L.title_voc_done = 1;
-            sound_fx((uint8_t)(0xB0 + frandom(2))); /* (_MenuVOC: one of the two) */
+            /* (_MenuVOC: one of the two death screams, dthfem or dthmal1; the port's: only with
+             * --title-scream, but the random number is drawn either way, as the original does) */
+            const uint8_t voc = (uint8_t)(0xB0 + frandom(2));
+            if (game_title_scream)
+                sound_fx(voc);
         }
         return 0;
     }

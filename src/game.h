@@ -52,6 +52,8 @@ typedef struct {
 
 extern bool game_no_objects;     /* (tests: don't draw the objects) */
 extern bool game_no_fall_check;  /* (tests: --sweep moves the player through floors) */
+/* The title's scream as the game starts (the port leaves it out; --title-scream plays it) */
+extern bool game_title_scream;
 
 /* _MachControl: the title (or `start_level`, if >= 0, as with the original's level warp on the
  * command line), then a level at a time until the player quits. */

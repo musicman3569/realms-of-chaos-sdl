@@ -131,7 +131,8 @@ driver, in the stereo its code has for two chips but ROC.EXE never turns on (eac
 sides, the right a little sharp: a wide, chorused sound), or with `--mono-music` on one emulated
 OPL2, exactly as it sounded on an AdLib or Sound Blaster. `--no-sound` and `--no-music` turn them
 off; ROC.CFG's sound / music card -1 (SETUP's "none") does too. Headless runs are silent but
-still time every sound, so the game behaves as it does with sound.
+still time every sound, so the game behaves as it does with sound. The port leaves out the
+title's death scream as the game starts (the user's choice); `--title-scream` plays it.
 
 ## Completed
 
@@ -523,6 +524,12 @@ still time every sound, so the game behaves as it does with sound.
   the `--crt` screenshots within 1 (a handful of pixels 2) on forest1, the title and castle; the
   plain screenshots are byte for byte as before; the window runs on SDL's dummy driver both ways.
   Not yet seen on a real screen (the mask's alignment, Alt+C, full screen).
+- Port, no scream on the title (the port's; asked for by the user): PROCESSTITLEPAGE's one sound,
+  0xb0 or 0xb1 at random (dthfem.voc / dthmal1.voc, the heroes' death screams), plays only with
+  `--title-scream` (`game_title_scream`); the random number is still drawn, so everything after it
+  is as before. Verified: on SDL's disk audio driver with the music off the title writes only
+  silence, and with `--title-scream` the scream; the documented title-to-new-game run gives the
+  same report and screenshot either way.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,

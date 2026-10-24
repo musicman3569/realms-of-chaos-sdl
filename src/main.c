@@ -29,7 +29,8 @@
  *   --no-objects     don't draw the objects
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
  * --no-music without music; the music plays in stereo on two emulated OPL2s (the driver's own
- * stereo, which ROC.EXE never turns on), or with --mono-music as the original plays it. --fullscreen starts in full screen (Alt+Enter switches between full
+ * stereo, which ROC.EXE never turns on), or with --mono-music as the original plays it. The title's death
+ * scream as the game starts is left out; --title-scream plays it as the original does. --fullscreen starts in full screen (Alt+Enter switches between full
  * screen and the window at any time). --crt starts with the CRT look, after RetroArch's
  * 2xsal-level2-crt preset (Alt+C turns it on and off; screenshots then show it at 640 x 400). --joystick uses the joystick (a game controller or any joystick
  * SDL finds) even if ROC.CFG doesn't turn it on. */
@@ -69,7 +70,7 @@ typedef struct {
     int hold_count;
     bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick, fullscreen,
         crt;
-    bool mono_music;
+    bool mono_music, title_scream;
 } options_t;
 
 static options_t opt;
@@ -167,6 +168,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->crt = true;
         else if (!strcmp(a, "--mono-music"))
             o->mono_music = true;
+        else if (!strcmp(a, "--title-scream"))
+            o->title_scream = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
             o->data_dir = argv[++i];
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -321,11 +324,12 @@ int main(int argc, char **argv)
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
                         "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick] "
-                        "[--fullscreen] [--crt] [--mono-music]\n");
+                        "[--fullscreen] [--crt] [--mono-music] [--title-scream]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
     game_no_fall_check = opt.sweep;
+    game_title_scream = opt.title_scream;
 
     char err[256], path[1100], folder[1024];
     archive_t arc;

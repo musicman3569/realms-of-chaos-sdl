@@ -530,7 +530,8 @@ voices) and ANIMATECURSOR call it.
 level's (rocsong.txt: 13-character names, 29 levels) and plays it looped at `_MusicVolume`.
 STATUSWIN pauses it; the title fades it over 1000 ms when quitting. **Menus**: OPENMENU loads
 `_MenuVOC` (sample 3, played when a line moves) and `_MenuVOC2` (0xa9, a line picked), CLOSEMENU
-waits for both to finish; the title plays 0xb0 or 0xb1 once. SOUNDMENU (RXWINDF.C:415) shows two
+waits for both to finish; the title plays 0xb0 or 0xb1 once (dthfem / dthmal1, the death screams; the port only with
+`--title-scream`). SOUNDMENU (RXWINDF.C:415) shows two
 sliders (SliderID: the track at window (0x79, 0x3d / 0x5d), the knob at x volume / 4 + 0x7d,
 y 0x40 / 0x60); VOLUMESELECT moves the line with up / down or S / M, a slider with left / right in
 steps of 16 (with the click; the knob drawn after a step up sits a pixel further right) and ends on
