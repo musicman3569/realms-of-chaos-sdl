@@ -85,16 +85,26 @@ bool config_load(void)
     Sess.sound_volume = (int16_t)rd16(cfg + 36);
     Sess.music_card = (int16_t)rd16(cfg + 38);
     Sess.music_volume = (int16_t)rd16(cfg + 42);
+    memcpy(Sess.my_button, cfg + 16, 4);
+    for (int i = 0; i < 6; i++)
+        Sess.joy_cal[i] = rd16(cfg + 20 + i * 2);
+    Sess.joystick_on = cfg[46];
     return true;
 }
 
 void config_save(void)
 {
     if (!cfg_read) {
-        /* what the port doesn't set: no joystick, the MIDI port at 330h */
+        /* what the port doesn't set: the MIDI port at 330h */
         memset(cfg, 0, sizeof cfg);
         wr16(cfg + 40, 0x330);
     }
+    /* (the joystick as read: STARTUPCHECKLIST turns _JoystickOn off for a missing joystick and
+     * then saves that; the port keeps the setting for when it's plugged in again) */
+    memcpy(cfg + 16, Sess.my_button, 4);
+    for (int i = 0; i < 6; i++)
+        wr16(cfg + 20 + i * 2, Sess.joy_cal[i]);
+    cfg[46] = Sess.joystick_on;
     wr16(cfg + 32, (uint16_t)Sess.sound_card);
     wr16(cfg + 34, (uint16_t)Sess.sound_voices);
     wr16(cfg + 36, (uint16_t)Sess.sound_volume);

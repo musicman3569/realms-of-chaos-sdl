@@ -23,7 +23,9 @@ extern surface_t Vga;
 void host_set_palette(const uint8_t *pal);  /* SETPALETTE */
 void host_get_palette(uint8_t *pal);        /* GETPALETTE */
 
-/* A key held for a range of ticks in a headless run: a PC scancode. */
+/* A key held for a range of ticks in a headless run: a PC scancode, or the scripted joystick:
+ * HOLD_JOY + 0-3 the stick pushed left, right, up, down, + 4-7 buttons 0-3, + 8 Start. */
+enum { HOLD_JOY = 0x100, JOY_BUTTONS = 5 };
 typedef struct {
     int scancode;
     long from, to;
@@ -34,6 +36,8 @@ typedef struct {
     long ticks;                  /* headless: the run's length in timer ticks */
     const host_hold_t *holds;    /* headless: the keys to hold */
     int hold_count;
+    bool joystick;               /* use the joystick whatever ROC.CFG says (headless: the
+                                  * scripted one) */
 } host_options_t;
 
 bool host_init(const host_options_t *o);
@@ -60,6 +64,18 @@ void fade_to(const uint8_t *pal);
  * Enter, Esc, Backspace), or 0. */
 int host_getkey(void);
 void host_flush_keys(void);
+
+/* The joystick (MYJOYREADER): while it's on (_JoystickOn) and one is plugged in, host_frame
+ * turns the stick and the four buttons into keys of _Keys, as the original does every frame and
+ * in its windows. host_joystick_on says whether it's in use (PERCENTWIN's "PRESS A BUTTON!"). */
+bool host_joystick_on(void);
+
+/* The controller's button layout (the port's): PAD_MENU, the default, for the menus, windows and
+ * the title (A Enter, B Esc); PAD_GAME for the game loop's own frames in a level (the buttons as
+ * ROC.CFG's MyBUTTON0-3 say); PAD_PROMPT for "Press Y" (the attack button and Y are Y). Start is
+ * Esc in all of them. */
+enum { PAD_MENU, PAD_GAME, PAD_PROMPT };
+void host_pad_mode(int mode);
 
 /* Save the screen as a PNG with its palette. */
 int host_screenshot(const char *path);

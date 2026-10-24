@@ -223,6 +223,9 @@ typedef struct {
     int16_t sound_card, music_card; /* _SoundCardType / _MusicCardType (ROC.CFG; -1 none) */
     int16_t sound_voices, sound_volume, music_volume; /* _SoundVoices, _SoundVolume (0-255),
                                   * _MusicVolume (ROC.CFG) */
+    uint8_t joystick_on;         /* _JoystickOn (ROC.CFG: SETUP's joystick choice) */
+    uint8_t my_button[4];        /* _MyBUTTON0-3: the _KeyTrans entry each button presses */
+    uint16_t joy_cal[6];         /* _Joy as ROC.CFG keeps it: Xsense, Xlo, Xhi, Ysense, Ylo, Yhi */
 } session_t;
 
 extern session_t Sess;

@@ -778,6 +778,8 @@ session_t Sess = {
     .diff_mode = 2, .game_flags = 4, .status_on = 1, .message_on = 1, .blood_on = 1,
     .next_score_up = 10000, .old_next_score_up = 10000,
     .key_trans = {0x4B, 0x4D, 0x48, 0x50, 0x1D, 0x38, 0x39, 0x1C},
+    /* the buttons as the shipped ROC.CFG has them: jump, attack, the special item, look */
+    .my_button = {4, 5, 6, 7},
     /* (with no ROC.CFG, the port's: sound and music on, 8 voices, full volume) */
     .sound_card = 0, .music_card = 0, .sound_voices = 8, .sound_volume = 255,
     .music_volume = 255,

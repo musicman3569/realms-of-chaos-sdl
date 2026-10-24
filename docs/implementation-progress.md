@@ -82,6 +82,9 @@ build/roc.exe game/ROC.EXE --level 16 --invincible --ticks 30000 --list --screen
 # headless: the Ross fight, the boss starting with 165 of its 170 hits taken (--boss-hits)
 # headless: level 1 on difficulty 3 (_DiffMode; the default is 2), where the view scrolls by itself
 build/roc.exe game/ROC.EXE --level 1 --difficulty 3 --invincible --ticks 6000 --list --screenshot out.png
+# headless with the scripted joystick: the stick right, button0 (A: jump, by ROC.CFG's MyBUTTON0;
+# button1-3 are X, B, Y, and start is Start)
+build/roc.exe game/ROC.EXE --level 0 --joystick --ticks 3000 --hold joyright:0-3000,button0:1000-1100 --screenshot out.png
 # headless: the fly-mode cheat (D + CapsLock + X held as PC scancodes), flying up and right
 build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold 0x20:500-520,0x3a:500-520,0x2d:500-520,up:600-900,right:600-2000 --screenshot out.png
 # headless: the pause window (Tab, PC scancode 0x0f, held at tick 600), with 25000 points (two bonuses)
@@ -98,7 +101,10 @@ build/roc.exe game/ROC.EXE --level 7 --female --invincible --gems 60 --boss-hits
 default): arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs), Space the special
 item (change hero), Enter + up / down (or PgUp / PgDn) look; Esc the main menu, F1 help, F2 / F3
 save / load, F8 / F9 quick save / load, F5 status display on / off, F6 / Tab / Pause the status
-window, F4 the sound volumes, F10 quit, F11 gamma; the cheats: Backspace held,
+window, F4 the sound volumes, F10 quit, F11 gamma; a joystick or game controller when ROC.CFG turns it on (SETUP's choice) or
+with `--joystick` (the stick or D-pad moves; in a level A / X / B / Y press the keys ROC.CFG's
+MyBUTTON0-3 name: jump, attack, the special item and look as shipped; in the menus A is Enter and
+B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu); the cheats: Backspace held,
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
 fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
@@ -432,6 +438,26 @@ still time every sound, so the game behaves as it does with sound.
   torch cells, the castle's gems...); on goblin2 the torches' flames and the gems' glints change
   between ticks 100 and 180; save and load on goblin2 work; a sweep of all 27 levels with both
   heroes is clean. Not compared frame by frame with DOSBox.
+- Port, the joystick (notes "The joystick"; the "parallax backdrop" this list had next doesn't
+  exist: the cell drawer draws opaque tiles, notes "Graphics"): in `src/host.c` SDL's first
+  joystick (a game controller: left stick or D-pad and A, B, X, Y; or a plain one), MYJOYREADER
+  writing the stick and buttons into the keys by `_KeyTrans` and `_MyBUTTON0-3`, with the
+  threshold from ROC.CFG's calibration; ROC.CFG's JoystickOn, MyBUTTON0-3 and calibration read
+  and written (`Sess`); `--joystick` and scripted joystick holds for headless runs; in `src/ui.c`
+  "PRESS A BUTTON!" in the results windows and the reader / Hall of Heroes taking button 0's and
+  1's keys (they were hard-wired to jump and attack). Headless holds now press and release keys at
+  their ends instead of being re-applied each frame. Verified headless: the ten documented test
+  runs give the same reports and screenshots as before; walking right and jumping by the
+  scripted joystick is identical to the keyboard; with ROC.CFG's joystick off the stick does
+  nothing; centring the stick lets go of a held keyboard arrow as in the original; the title's
+  menus start a game by buttons alone; button 0 leaves the reader; the results window says "PRESS
+  A BUTTON!"; sweeps of all 27 levels are clean. After a play test with a real controller: X
+  attacks and B changes hero (A, X, B, Y are gameport buttons 0-3), Start is Esc (the main menu in
+  a level), and outside the level's own frames A is Enter and B Esc, with X and Y as Y at the
+  "Press Y" prompts (`host_pad_mode`; scripted hold `start`). Verified headless: X fires as Alt
+  does, B changes hero as Space does, A jumps as Ctrl does (identical runs); Start opens the main
+  menu, B leaves it, A picks a new game; at F10's prompt X and Y quit and A goes back; on the title
+  A alone starts a game; the documented keyboard runs are unchanged.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -439,9 +465,8 @@ still time every sound, so the game behaves as it does with sound.
 
 ## Next steps
 
-1. Parallax backdrop (sky/horizon tiles show through gaps); the joystick (MYJOYREADER, the
-   `MyBUTTON` keys); the original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
+1. The original's saved games (ROC.SG0-7: SAVEGAME writes DOS pointers, so
    reading them needs STOREOBJECTINFO / MAKEOBJECT's mapping); the OPL3 stereo paths of
    AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
-   Linux and macOS; the interactive window, the sound and the animated tiles haven't been tried by
-   a person yet.
+   Linux and macOS; the interactive window, the sound, the animated tiles and the joystick (with
+   a real controller) haven't been tried by a person yet.

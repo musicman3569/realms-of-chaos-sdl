@@ -15,7 +15,9 @@
  *   --pos X,Y        keep the view's top left corner there
  *   --player X,Y     move the player (hotspot, map pixels) at the start
  *   --hold A:F-T,... hold an action key (left, right, up, down, jump, attack, item, look) or a PC
- *                    scancode ("0x20:0-10" holds D) from tick F to T
+ *                    scancode ("0x20:0-10" holds D) from tick F to T; with --joystick also the
+ *                    scripted joystick: joyleft, joyright, joyup, joydown, button0-button3
+ *                    (a game controller's A, X, B, Y) and start
  *   --trace N        print the player's state every N ticks (a multiple of 8)
  *   --female         play the female hero (fireballs); --gems N, --score N start with them
  *   --boss-hits N    start the level's boss with N hits taken (GenericVar[3])
@@ -26,7 +28,8 @@
  *   --list           print every object at the end
  *   --no-objects     don't draw the objects
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
- * --no-music without music. */
+ * --no-music without music. --joystick uses the joystick (a game controller or any joystick
+ * SDL finds) even if ROC.CFG doesn't turn it on. */
 #include "almidi.h"
 #include "archive.h"
 #include "audio.h"
@@ -61,13 +64,16 @@ typedef struct {
     const char *hold_names[MAX_HOLDS];
     host_hold_t holds[MAX_HOLDS];
     int hold_count;
-    bool no_objects, sweep, list, female, invincible, no_sound, no_music;
+    bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick;
 } options_t;
 
 static options_t opt;
 
 static const char *const action_names[] = {"left", "right", "up",     "down",
                                            "jump", "attack", "item", "look"};
+/* the scripted joystick's holds (HOLD_JOY + index) */
+static const char *const joy_names[] = {"joyleft", "joyright", "joyup",   "joydown", "button0",
+                                        "button1", "button2",  "button3", "start"};
 
 /* Holds name an action (its key in _KeyTrans) or a raw PC scancode. */
 static bool parse_holds(const char *s, options_t *o)
@@ -83,6 +89,9 @@ static bool parse_holds(const char *s, options_t *o)
         for (int i = 0; i < 8; i++)
             if (!strcmp(name, action_names[i]))
                 code = Sess.key_trans[i] & 0x7F;
+        for (int i = 0; i < 4 + JOY_BUTTONS; i++)
+            if (!strcmp(name, joy_names[i]))
+                code = HOLD_JOY + i;
         if (code < 0 && name[0] == '0' && name[1] == 'x') {
             const long c = strtol(name, NULL, 16);
             if (c > 0 && c < 0x80)
@@ -145,6 +154,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->no_sound = true;
         else if (!strcmp(a, "--no-music"))
             o->no_music = true;
+        else if (!strcmp(a, "--joystick"))
+            o->joystick = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
             o->data_dir = argv[++i];
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -298,7 +309,7 @@ int main(int argc, char **argv)
                         "[--screenshot out.png --ticks N] [--pos X,Y] [--player X,Y] "
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
-                        "[--list] [--no-objects] [--no-sound] [--no-music]\n");
+                        "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
@@ -327,7 +338,7 @@ int main(int argc, char **argv)
         if (opt.hold_names[i] && !parse_holds(opt.hold_names[i], &opt))
             return 2;
 
-    const host_options_t ho = {headless, opt.ticks, opt.holds, opt.hold_count};
+    const host_options_t ho = {headless, opt.ticks, opt.holds, opt.hold_count, opt.joystick};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;

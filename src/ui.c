@@ -895,6 +895,15 @@ void load_menu(void)
     }
 }
 
+/* WINDOWCURSOR2 for a "Press Y" window: the controller's attack button counts as Y. */
+static int yes_cursor(int x, int y)
+{
+    host_pad_mode(PAD_PROMPT);
+    const int k = window_cursor2(x, y, false);
+    host_pad_mode(PAD_MENU);
+    return k;
+}
+
 /* RXWINDF.C:1437 QUICKMENU(saving): F8 saves over the slot last used, F9 loads it, and after a
  * death (2) it offers to restore it if it holds this level; with no slot used yet, F8 / F9 open
  * the save / load menu. */
@@ -924,7 +933,7 @@ void quick_menu(int saving)
         menu_str(0x18, 0x22, s);
         menu_str(0x18, 0x32, "{4}Press any other key");
         menu_str(0x18, 0x3B, "{4}to start this level over.");
-        yes = window_cursor2(0xB6, 0x3E, false) == 0x15;
+        yes = yes_cursor(0xB6, 0x3E) == 0x15;
         win_clear();
     } else {
         yes = prompt_win(saving == 1 ? PROMPT_QUICKSAVE : PROMPT_QUICKRESTORE, desc);
@@ -967,7 +976,7 @@ bool prompt_win(int type, const char *desc)
     menu_str(0x18, file ? 0x32 : 0x29, s);
     snprintf(s, sizeof s, "%s%s", c, go_backs[frandom(4)]);
     menu_str(0x18, file ? 0x3B : 0x32, s);
-    const int k = window_cursor2(0xAC, file ? 0x3C : 0x34, false);
+    const int k = yes_cursor(0xAC, file ? 0x3C : 0x34);
     win_clear();
     return k == 0x15; /* Y */
 }
@@ -1187,7 +1196,7 @@ void percent_win(void)
     U.font_space = 0;
     if (new_time)
         menu_str(0x28, 0x41, "{6}NEW BEST TIME!");
-    menu_str(0x28, 0x92, "{2}PRESS ANY KEY!");
+    menu_str(0x28, 0x92, host_joystick_on() ? "{2}PRESS A BUTTON!" : "{2}PRESS ANY KEY!");
     window_cursor2(0xD2, 0x8A, false);
     wait_tics(2);
     win_clear();
@@ -1211,7 +1220,7 @@ void final_percent_win(void)
     result_count(0x5E, "{2}Secrets:", L.secret_total, L.secret_final);
     U.font = IMG_ROCFONT;
     U.font_space = 0;
-    menu_str(0x28, 0x77, "{2}PRESS ANY KEY!");
+    menu_str(0x28, 0x77, host_joystick_on() ? "{2}PRESS A BUTTON!" : "{2}PRESS ANY KEY!");
     window_cursor2(0xD2, 0x6F, false);
     wait_tics(2);
     win_clear();
@@ -1393,6 +1402,14 @@ static void score_page(int page, const hscore_t *h)
     }
 }
 
+/* The key a joystick button presses: _KeyTrans[_MyBUTTONn]. The reader and the Hall of Heroes
+ * take button 0's key (the jump key, as SETUP ships them) for Esc and button 1's (attack) for
+ * Enter, with or without a joystick. */
+static int button_key(int b)
+{
+    return G.key_trans[Sess.my_button[b] & 7] & 0x7F;
+}
+
 /* RXWINDF.C:2582 DISPLAYSCORES(by_user): the Hall of Heroes' three pages. Picked from the menu,
  * the keys turn them (Esc, or Enter on the last, leaves); on the title each shows for 1500
  * ticks, and after the last the title's first picture comes back. */
@@ -1418,10 +1435,10 @@ void display_scores(bool by_user)
             } else if ((k == 0x4B || k == 0x49 || k == 0x4A || k == 0x0C || k == 0x48) && page) {
                 page--;
             } else if ((k == 0x4D || k == 0x51 || k == 0x4E || k == 0x0D || k == 0x50 ||
-                        k == 0x1C || k == 0x39 || k == (G.key_trans[K_ATTACK] & 0x7F)) &&
+                        k == 0x1C || k == 0x39 || k == button_key(1)) &&
                        page < 2) {
                 page++;
-            } else if (k == 1 || (k == 0x1C && page == 2) || k == (G.key_trans[K_JUMP] & 0x7F)) {
+            } else if (k == 1 || (k == 0x1C && page == 2) || k == button_key(0)) {
                 fade_out();
                 win_clear();
                 return;
@@ -1472,7 +1489,7 @@ bool end_win(void)
     menu_str(0x18, 0x29, "{4}Press any other key to");
     menu_str(0x18, 0x32, "{4}return to the title.");
     fade_to(G.level_pal);
-    const int k = window_cursor2(0xAC, 0x34, false);
+    const int k = yes_cursor(0xAC, 0x34);
     fade_out();
     win_clear();
     return k == 0x15;
@@ -1539,16 +1556,16 @@ static void reader_win(const char *header, const char *foot, const char *text)
 
 /* RXWINDF.C:1773 READERFETCHER: keys until the page changes (a CS table at 2ff5:3861): Esc out,
  * Home / End the first / last page, - Up PgUp Left keypad-minus back, = Enter Space Right
- * keypad-plus Down PgDn on (Enter on the last page leaves; the jump key is Esc and the attack
- * key Enter). rocinst.txt wraps round, the stories don't. */
+ * keypad-plus Down PgDn on (Enter on the last page leaves; button 0's key is Esc and button 1's
+ * Enter). rocinst.txt wraps round, the stories don't. */
 static void reader_fetcher(bool wraps)
 {
     const int old = L.reader_page;
     while (L.reader_page == old) {
         int k = window_cursor2(0x124, 0xA1, false);
-        if ((k == 0x1C && L.reader_page == R.pages - 1) || k == (G.key_trans[K_JUMP] & 0x7F))
+        if ((k == 0x1C && L.reader_page == R.pages - 1) || k == button_key(0))
             k = 1;
-        else if (k == (G.key_trans[K_ATTACK] & 0x7F))
+        else if (k == button_key(1))
             k = 0x1C;
         switch (k) {
         case 0x01: L.reader_page = 0x63; break;

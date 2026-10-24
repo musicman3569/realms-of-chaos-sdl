@@ -648,7 +648,11 @@ static void run_level(void)
     for (;;) {
         if (frame_hook())
             break;
+        /* the controller's in-game layout for the level's own frames; the windows, menus and
+         * the title read it as a menu */
+        host_pad_mode(G.level < LEVEL_TITLE ? PAD_GAME : PAD_MENU);
         const int ticks = host_frame();
+        host_pad_mode(PAD_MENU);
         if (G.level == LEVEL_TITLE) {
             /* TITLETIMER */
             title_timer = (uint16_t)(title_timer + ticks);

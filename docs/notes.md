@@ -159,6 +159,11 @@ The format details are in that script's docstring. In short:
   Rows*Cols + 3 bytes, so one spare byte follows). Reading the table from offset 3 instead
   shifts every foreground tile one cell left (tree tops off their trunks, sky showing through
   the gaps), which the port did at first.
+- The cell drawer (3cb4:0d58) draws one opaque 16x16 background tile per cell, from layer 1, 2
+  or 3 by its number (below 0xf0, below 0x1e0, the rest; each layer is 240 tiles in the `.bg`,
+  as every level's counts have it), then masks the foreground or bonus tile over a copy of it.
+  There is no backdrop layer and no parallax: RUNLEVEL draws the map and the three object lists
+  and nothing else (an earlier handoff guessed at one).
 - Level *n* uses `name[n].led` and the tile set `name[set[n]]`, where the names come from
   `roclevel.txt` and `set[]` is a 29-byte table at DS:033e (e.g. forest2 uses forest1's tiles).
 - Each `.led` ends with 0x600 bytes that `LOADLEVEL` doesn't read (after its 0x400/0x100/0x100
@@ -1108,3 +1113,44 @@ the same in the original.
 in `game_frame` and stepped before the objects run; the port redraws the whole view each frame, so
 there's no MAPUPDATE. A restored game's maps replace the level's after the setup, as in the
 original, and the cells' positions are the same.
+
+## The joystick
+
+ROC.CFG (SETUP.EXE writes it) has `JoystickOn` (byte 46), `MyBUTTON0-3` (bytes 16-19: the
+`_KeyTrans` entry each button presses; the shipped file has 4, 5, 6, 7: jump, attack, the special
+item, look) and the calibration (bytes 20-31, the JOY struct `_Joy` at DS:1c1c in another order:
+Xsense, Xlo, Xhi, Ysense, Ylo, Yhi). JOYCALIBRATE (3c1c:0145, which only SETUP's copy runs) reads
+the centred stick and stores centre - sense and centre + sense as lo / hi. READJOY (3c1c:0001)
+times the gameport's one-shots on port 201h (up to 5000 loops; JOYDETECT calls it absent at that).
+STARTUPCHECKLIST prints "Joystick present / not present / active / not active", turns
+`_JoystickOn` off when there's none (which SAVECONFIGFILE then saves), and points `_JoyReader` at
+NULLJOYREADER; otherwise `_MachControl` points it at MYJOYREADER. (SYSJOYREADER, the engine's own,
+with `_Button0-3pressed`, isn't used.)
+
+**MYJOYREADER** (RXUTILSF.C:30) writes into `_Keys` as the keyboard interrupt does: an x reading
+below Xlo holds `_KeyTrans[0]` (left) and lets go of right, above Xhi the reverse, and back inside
+it lets go of both, once (DS:53ca; y the same with up / down, DS:53cb). Each button (201h bits
+4-7, low when pressed) presses or lets go of `_KeyTrans[_MyBUTTONn]` only when it changes
+(DS:53c6-53c9). So a key held on the keyboard is let go when the stick comes back to the middle.
+RUNLEVEL calls `_JoyReader(&_Joy)` every frame, and OPENMENU, SELECTMENU, WINDOWCURSOR2, PROMPTWIN,
+VOLUMESELECT and ENDWIN call MYJOYREADER in their key loops when `_JoystickOn`. Elsewhere:
+PERCENTWIN and FINALPERCENTWIN say "PRESS A BUTTON!" instead of "PRESS ANY KEY!", READERFETCHER
+takes `_KeyTrans[_MyBUTTON0]` for Esc and `[_MyBUTTON1]` for Enter, and DISPLAYSCORES leaves on
+button 0's key and turns the page on button 1's (with or without a joystick). READBUTTON /
+DBREADBUTTON read a button straight (debounced over a tick).
+
+**The port** (`src/host.c`): SDL's first joystick, as a game controller when SDL knows it (the
+left stick or the D-pad; A, X, B, Y are buttons 0-3, so with the shipped MyBUTTONs A jumps, X
+attacks, B changes hero and Y looks, as an Xbox 360 controller's layout suggests) or as a plain
+joystick (axes 0 and 1, hat 0, buttons 0-3), opened again when one is plugged in or out. Beyond
+the original (asked for in play testing), the controller has three layouts (`host_pad_mode`): the
+game loop's own frames in a level use MyBUTTON0-3; everything else (the menus and windows, the
+reader, the title) has A as Enter and B as Esc; the "Press Y" windows (PROMPTWIN, DEATHRESTOREWIN,
+ENDWIN) also take the attack button (X) and Y as Y. Start is Esc in all of them, so it opens the
+main menu in a level. A button lets go of the key it pressed, whatever the layout is by then. MYJOYREADER runs at every frame (which
+covers RUNLEVEL and the windows) while ROC.CFG's `JoystickOn` or `--joystick` is set and one is
+plugged in. The threshold is the calibration's margin over its centre as a part of the stick's
+throw (half without one). The port doesn't save `JoystickOn` off for a missing joystick. Headless
+runs have a scripted joystick (`--joystick` with holds `joyleft`... `button0`...); their key holds
+now press and release keys at their ends, as the keyboard's events do, so the joystick can write
+into the keys too (no earlier test changes).

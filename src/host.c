@@ -32,6 +32,14 @@ static struct {
     Uint64 last;
     double acc;
     int shot;
+    uint8_t hold_prev[128];      /* headless: the keys the holds held at the frame before */
+    uint8_t joy_held[4 + JOY_BUTTONS]; /* headless: the scripted joystick (HOLD_JOY + n) */
+    SDL_GameController *pad;     /* the joystick, as a game controller */
+    SDL_Joystick *stick;         /* or as a plain joystick */
+    uint8_t joy_x, joy_y;        /* DS:53ca / 53cb: the stick holds the arrow keys */
+    uint8_t joy_button[JOY_BUTTONS]; /* DS:53c6-53c9: each button's state when last read */
+    uint8_t joy_key[JOY_BUTTONS];    /* the key each button pressed */
+    int pad_mode;                /* the buttons' layout (PAD_GAME...) */
 } H;
 
 void host_set_palette(const uint8_t *pal)
@@ -89,7 +97,7 @@ bool host_init(const host_options_t *o)
         return false;
     if (o->headless)
         return true;
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "roc: SDL_Init: %s\n", SDL_GetError());
         return false;
     }
@@ -106,11 +114,38 @@ bool host_init(const host_options_t *o)
     }
     SDL_RenderSetLogicalSize(H.ren, SCREEN_W, SCREEN_H);
     H.last = SDL_GetPerformanceCounter();
+    if ((Sess.joystick_on || o->joystick) && SDL_NumJoysticks() < 1)
+        fprintf(stderr, "roc: no joystick found (it's used once one is plugged in)\n");
     return true;
+}
+
+static void close_joystick(void)
+{
+    if (H.pad)
+        SDL_GameControllerClose(H.pad);
+    if (H.stick)
+        SDL_JoystickClose(H.stick);
+    H.pad = NULL;
+    H.stick = NULL;
+}
+
+/* The first joystick plugged in: as a game controller when SDL knows its layout (the left stick
+ * and the D-pad, buttons A, B, X, Y), else the first two axes, the first hat and buttons 0-3.
+ * SDL reports the joysticks already plugged in as added at the start. */
+static void open_joystick(void)
+{
+    close_joystick();
+    for (int i = 0; i < SDL_NumJoysticks() && !H.pad && !H.stick; i++) {
+        if (SDL_IsGameController(i))
+            H.pad = SDL_GameControllerOpen(i);
+        else
+            H.stick = SDL_JoystickOpen(i);
+    }
 }
 
 void host_shutdown(void)
 {
+    close_joystick();
     free(H.argb);
     if (H.tex)
         SDL_DestroyTexture(H.tex);
@@ -232,8 +267,152 @@ static void type_keys(void)
     memcpy(H.prev, H.keys, sizeof H.prev);
 }
 
+bool host_joystick_on(void)
+{
+    if (!Sess.joystick_on && !H.opt.joystick)
+        return false;
+    return H.opt.headless ? H.opt.joystick : H.pad || H.stick;
+}
+
+void host_pad_mode(int mode)
+{
+    H.pad_mode = mode;
+}
+
+/* The stick (-32768 to 32767 each way) and the buttons as they are now: bits 0-3 the gameport's
+ * buttons 0-3, bit 4 a game controller's Start. A game controller's A, X, B, Y are buttons 0-3,
+ * so with ROC.CFG's MyBUTTON0-3 as shipped (jump, attack, the special item, look) A jumps, X
+ * attacks and B changes hero, as on an Xbox 360 controller's layout. */
+static void read_joystick(int *x, int *y, unsigned *buttons)
+{
+    *x = *y = 0;
+    *buttons = 0;
+    if (H.opt.headless) {
+        *x = H.joy_held[0] ? -32768 : H.joy_held[1] ? 32767 : 0;
+        *y = H.joy_held[2] ? -32768 : H.joy_held[3] ? 32767 : 0;
+        for (int b = 0; b < JOY_BUTTONS; b++)
+            *buttons |= (unsigned)H.joy_held[4 + b] << b;
+    } else if (H.pad) {
+        static const SDL_GameControllerButton face[JOY_BUTTONS] = {
+            SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_B,
+            SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_START};
+        *x = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTX);
+        *y = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTY);
+        if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
+            *x = -32768;
+        else if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
+            *x = 32767;
+        if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_UP))
+            *y = -32768;
+        else if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN))
+            *y = 32767;
+        for (int b = 0; b < JOY_BUTTONS; b++)
+            *buttons |= (unsigned)(SDL_GameControllerGetButton(H.pad, face[b]) != 0) << b;
+    } else if (H.stick) {
+        if (SDL_JoystickNumAxes(H.stick) >= 2) {
+            *x = SDL_JoystickGetAxis(H.stick, 0);
+            *y = SDL_JoystickGetAxis(H.stick, 1);
+        }
+        if (SDL_JoystickNumHats(H.stick) >= 1) {
+            const Uint8 hat = SDL_JoystickGetHat(H.stick, 0);
+            if (hat & SDL_HAT_LEFT)
+                *x = -32768;
+            else if (hat & SDL_HAT_RIGHT)
+                *x = 32767;
+            if (hat & SDL_HAT_UP)
+                *y = -32768;
+            else if (hat & SDL_HAT_DOWN)
+                *y = 32767;
+        }
+        for (int b = 0; b < 4 && b < SDL_JoystickNumButtons(H.stick); b++)
+            *buttons |= (unsigned)(SDL_JoystickGetButton(H.stick, b) != 0) << b;
+    }
+}
+
+/* How far the stick must go to count, from ROC.CFG's calibration: SETUP stores the centre's
+ * reading less and plus a margin (JoyXlo / JoyXhi, as JOYCALIBRATE makes them), so the margin
+ * over the centre is the part of the throw that doesn't count. Half the throw without one. */
+static int joy_threshold(uint16_t lo, uint16_t hi)
+{
+    if (lo >= hi)
+        return 16384;
+    const long t = (long)(hi - lo) * 32767 / ((long)lo + hi);
+    return t < 4000 ? 4000 : t > 28000 ? 28000 : (int)t;
+}
+
+static void set_action(int action, uint8_t on)
+{
+    H.keys[Sess.key_trans[action & 7] & 0x7F] = on;
+}
+
+/* The key button b presses (the port's): Start is Esc everywhere (the main menu in a level, back
+ * in the menus). In a level each gameport button presses the key its _MyBUTTON names, as
+ * MYJOYREADER does. In the menus and windows button 0 (A) is Enter and button 2 (B) Esc; at a
+ * "Press Y" prompt the attack button (X) and button 3 (Y) are Y as well. */
+static int button_scancode(int b)
+{
+    if (b == 4)
+        return 0x01;
+    const int k = Sess.key_trans[Sess.my_button[b] & 7] & 0x7F;
+    if (H.pad_mode == PAD_GAME)
+        return k;
+    if (b == 0)
+        return 0x1C;
+    if (b == 2)
+        return 0x01;
+    if (H.pad_mode == PAD_PROMPT && ((Sess.my_button[b] & 7) == K_ATTACK || b == 3))
+        return 0x15;
+    return k;
+}
+
+/* RXUTILSF.C:30 MYJOYREADER: the stick past its threshold holds the arrow key that way and lets
+ * go of the other; back inside, it lets go of both, once. Each button (port 201h bits 4-7)
+ * presses or lets go of the key its _MyBUTTON names when it changes. So the joystick writes into
+ * _Keys as the keyboard does, and a key held on either shows. The port picks a button's key by
+ * the layout (button_scancode) when it's pressed and lets go of that same key when it's let go,
+ * even if the layout changed meanwhile. */
+static void my_joy_reader(void)
+{
+    int x, y;
+    unsigned buttons;
+    read_joystick(&x, &y, &buttons);
+    const int tx = joy_threshold(Sess.joy_cal[1], Sess.joy_cal[2]);
+    const int ty = joy_threshold(Sess.joy_cal[4], Sess.joy_cal[5]);
+    if (x < -tx || x > tx) {
+        H.joy_x = 1;
+        set_action(K_LEFT, x < 0);
+        set_action(K_RIGHT, x > 0);
+    } else if (H.joy_x) {
+        H.joy_x = 0;
+        set_action(K_LEFT, 0);
+        set_action(K_RIGHT, 0);
+    }
+    if (y < -ty || y > ty) {
+        H.joy_y = 1;
+        set_action(K_UP, y < 0);
+        set_action(K_DOWN, y > 0);
+    } else if (H.joy_y) {
+        H.joy_y = 0;
+        set_action(K_UP, 0);
+        set_action(K_DOWN, 0);
+    }
+    for (int b = 0; b < JOY_BUTTONS; b++) {
+        const uint8_t on = (buttons >> b) & 1;
+        if (on != H.joy_button[b]) {
+            H.joy_button[b] = on;
+            if (on)
+                H.joy_key[b] = (uint8_t)button_scancode(b);
+            H.keys[H.joy_key[b]] = on;
+        }
+    }
+}
+
+/* The original reads the joystick in RUNLEVEL (_JoyReader) and in the windows' key loops; the
+ * port reads it at every frame, which covers both. */
 static void sync_keys(void)
 {
+    if (host_joystick_on())
+        my_joy_reader();
     type_keys();
     memcpy(G.keys, H.keys, sizeof G.keys);
     if (H.pause_hit) {
@@ -247,12 +426,23 @@ static int headless_frame(void)
     if (H.ticks >= H.opt.ticks)
         longjmp(host_end, 1);
     long step = H.opt.ticks - H.ticks < HEADLESS_STEP ? H.opt.ticks - H.ticks : HEADLESS_STEP;
-    memset(H.keys, 0, sizeof H.keys);
+    /* a held key goes down and up as its holds start and end, like the keyboard's events, so
+     * the joystick can write into the keys too */
+    uint8_t held[128] = {0};
+    memset(H.joy_held, 0, sizeof H.joy_held);
     for (int i = 0; i < H.opt.hold_count; i++) {
         const host_hold_t *h = &H.opt.holds[i];
-        if (H.ticks >= h->from && H.ticks < h->to && h->scancode > 0 && h->scancode < 128)
-            H.keys[h->scancode] = 1;
+        if (H.ticks < h->from || H.ticks >= h->to)
+            continue;
+        if (h->scancode > 0 && h->scancode < 128)
+            held[h->scancode] = 1;
+        else if (h->scancode >= HOLD_JOY && h->scancode < HOLD_JOY + 4 + JOY_BUTTONS)
+            H.joy_held[h->scancode - HOLD_JOY] = 1;
     }
+    for (int k = 0; k < 128; k++)
+        if (held[k] != H.hold_prev[k])
+            H.keys[k] = held[k];
+    memcpy(H.hold_prev, held, sizeof held);
     H.ticks += step;
     audio_advance((int)step);
     sync_keys();
@@ -276,6 +466,8 @@ int host_frame(void)
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 longjmp(host_end, 2);
+            if (e.type == SDL_JOYDEVICEADDED || e.type == SDL_JOYDEVICEREMOVED)
+                open_joystick();
             if (e.type != SDL_KEYDOWN && e.type != SDL_KEYUP)
                 continue;
             const int pc = pc_scancode(e.key.keysym.scancode);
