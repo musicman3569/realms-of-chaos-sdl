@@ -28,7 +28,8 @@
  *   --list           print every object at the end
  *   --no-objects     don't draw the objects
  * --no-sound plays without sound (the game still times its sounds, as headless runs do) and
- * --no-music without music. --joystick uses the joystick (a game controller or any joystick
+ * --no-music without music. --fullscreen starts in full screen (Alt+Enter switches between full
+ * screen and the window at any time). --joystick uses the joystick (a game controller or any joystick
  * SDL finds) even if ROC.CFG doesn't turn it on. */
 #include "almidi.h"
 #include "archive.h"
@@ -64,7 +65,7 @@ typedef struct {
     const char *hold_names[MAX_HOLDS];
     host_hold_t holds[MAX_HOLDS];
     int hold_count;
-    bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick;
+    bool no_objects, sweep, list, female, invincible, no_sound, no_music, joystick, fullscreen;
 } options_t;
 
 static options_t opt;
@@ -156,6 +157,8 @@ static bool parse_args(int argc, char **argv, options_t *o)
             o->no_music = true;
         else if (!strcmp(a, "--joystick"))
             o->joystick = true;
+        else if (!strcmp(a, "--fullscreen"))
+            o->fullscreen = true;
         else if (!strcmp(a, "--data-dir") && i + 1 < argc)
             o->data_dir = argv[++i];
         else if (!strcmp(a, "--screenshot") && i + 1 < argc)
@@ -309,7 +312,8 @@ int main(int argc, char **argv)
                         "[--screenshot out.png --ticks N] [--pos X,Y] [--player X,Y] "
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
-                        "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick]\n");
+                        "[--list] [--no-objects] [--no-sound] [--no-music] [--joystick] "
+                        "[--fullscreen]\n");
         return 2;
     }
     game_no_objects = opt.no_objects;
@@ -340,7 +344,9 @@ int main(int argc, char **argv)
         if (opt.hold_names[i] && !parse_holds(opt.hold_names[i], &opt))
             return 2;
 
-    const host_options_t ho = {headless, opt.ticks, opt.holds, opt.hold_count, opt.joystick};
+    const host_options_t ho = {.headless = headless, .ticks = opt.ticks, .holds = opt.holds,
+                               .hold_count = opt.hold_count, .fullscreen = opt.fullscreen,
+                               .joystick = opt.joystick};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;

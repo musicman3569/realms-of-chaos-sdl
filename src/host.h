@@ -36,6 +36,7 @@ typedef struct {
     long ticks;                  /* headless: the run's length in timer ticks */
     const host_hold_t *holds;    /* headless: the keys to hold */
     int hold_count;
+    bool fullscreen;             /* start in full screen (Alt+Enter toggles it) */
     bool joystick;               /* use the joystick whatever ROC.CFG says (headless: the
                                   * scripted one) */
 } host_options_t;

@@ -40,6 +40,7 @@ static struct {
     uint8_t joy_button[JOY_BUTTONS]; /* DS:53c6-53c9: each button's state when last read */
     uint8_t joy_key[JOY_BUTTONS];    /* the key each button pressed */
     int pad_mode;                /* the buttons' layout (PAD_GAME...) */
+    bool fullscreen;
 } H;
 
 void host_set_palette(const uint8_t *pal)
@@ -89,6 +90,18 @@ int host_screenshot(const char *path)
     return rc;
 }
 
+/* Full screen at the desktop's resolution (the picture scaled to fit, keeping its shape, with
+ * black bars), or back to the window; the mouse pointer is hidden in full screen. */
+static void set_fullscreen(bool on)
+{
+    if (SDL_SetWindowFullscreen(H.win, on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
+        fprintf(stderr, "roc: full screen: %s\n", SDL_GetError());
+        return;
+    }
+    H.fullscreen = on;
+    SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
+}
+
 bool host_init(const host_options_t *o)
 {
     memset(&H, 0, sizeof H);
@@ -103,6 +116,8 @@ bool host_init(const host_options_t *o)
     }
     H.win = SDL_CreateWindow("Realms of Chaos", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                              SCREEN_W * SCALE, SCREEN_H * SCALE, SDL_WINDOW_RESIZABLE);
+    if (H.win && o->fullscreen)
+        set_fullscreen(true);
     H.ren = H.win ? SDL_CreateRenderer(H.win, -1, SDL_RENDERER_PRESENTVSYNC) : NULL;
     H.tex = H.ren ? SDL_CreateTexture(H.ren, SDL_PIXELFORMAT_ARGB8888,
                                       SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H)
@@ -470,6 +485,14 @@ int host_frame(void)
                 open_joystick();
             if (e.type != SDL_KEYDOWN && e.type != SDL_KEYUP)
                 continue;
+            /* Alt+Enter (the port's): full screen on / off; the game doesn't see that Enter */
+            if (e.type == SDL_KEYDOWN && (e.key.keysym.mod & KMOD_ALT) &&
+                (e.key.keysym.scancode == SDL_SCANCODE_RETURN ||
+                 e.key.keysym.scancode == SDL_SCANCODE_KP_ENTER)) {
+                if (!e.key.repeat)
+                    set_fullscreen(!H.fullscreen);
+                continue;
+            }
             const int pc = pc_scancode(e.key.keysym.scancode);
             if (pc >= 0)
                 H.keys[pc] = e.type == SDL_KEYDOWN;

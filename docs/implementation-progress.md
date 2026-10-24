@@ -65,6 +65,7 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 ```
 build/roc.exe game/ROC.EXE                          # the game: title, menus, levels
 build/roc.exe game/ROC.EXE --level 5                # a new game at level 5 (skips the title)
+build/roc.exe game/ROC.EXE --fullscreen             # the game in full screen (Alt+Enter toggles it)
 # headless: the title, Esc at tick 1000 (main menu), then Enter three times: a new game on Normal
 build/roc.exe game/ROC.EXE --ticks 6000 --hold 0x01:1000-1020,0x1c:1500-1520,0x1c:2000-2020,0x1c:2500-2520 --screenshot out.png
 # headless with files (ROC.CFG, roc.sco, saves) in a scratch folder: F2, Enter (slot 1), type "test", Enter
@@ -106,7 +107,9 @@ with `--joystick` (the stick or D-pad moves; in a level A / X / B / Y press the 
 MyBUTTON0-3 name: jump, attack, the special item and look as shipped; in the menus A is Enter and
 B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu); the cheats: Backspace held,
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
-fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
+fly mode (Ctrl lands). F12 saves `shotNNN.png` and Alt+Enter switches between full screen (the
+desktop's resolution, the picture scaled to fit with black bars, no mouse pointer) and the window
+(both the port's; `--fullscreen` starts in full screen). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
 Heroes) and the saved games (saving writes the port's `ROCP.SGn` and the original's `ROC.SGn`;
 loading takes whichever of a slot's two is newer) live in the game's folder, or in
@@ -483,6 +486,11 @@ still time every sound, so the game behaves as it does with sound.
   format lacks the seed, `_DragonMove` or the equal-priority order (levels 7-10 and 26, as the
   DOS game would); the parser in the session scratchpad reads every port-written file to its
   end; the documented runs are unchanged. Not loaded in the DOS game yet.
+- Port, full screen (the port's own): `--fullscreen` and Alt+Enter in `src/host.c`
+  (SDL_WINDOW_FULLSCREEN_DESKTOP, the 320 x 200 picture scaled to fit with its shape kept, the
+  mouse pointer hidden; the game doesn't see that Enter). Not remembered between runs: ROC.CFG
+  has no place for it. Checked on SDL's dummy video driver (no error) and the documented headless
+  runs are unchanged; not yet seen on a real screen.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
