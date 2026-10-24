@@ -661,8 +661,8 @@ volumes, StatusOn, MessageOn, JoystickOn, BloodOn, BloodPass[20], GammaCorrect.
 the screen (SAVEPAGE), WINCLEAR puts it back (REFRESHPAGE redraws the level), WINDOWN leaves the
 window for the next frame. The port saves games in its own format (`ROCP.SG0-7`, `ROCP.SGT`): the
 same header ("ROCP", version 1) and every object and the game's state (pointers as object numbers,
-images as `_Img` indexes, the maps and palettes, `_DragonMove`). It also loads the original's
-`ROC.SG0-7` (see "The original's saved games").
+images as `_Img` indexes, the maps and palettes, `_DragonMove`). It also reads and writes the
+original's `ROC.SG0-7` (see "The original's saved games").
 
 ## Bolo cats and the snake platform
 
@@ -1201,8 +1201,31 @@ folder: before, 4517 of castle1's 7540 cells had other tiles than the level; aft
 the player brought down), and the other levels likewise (forest1: its 7 waterfall cells,
 mid-cycle).
 
-**The port** (`src/save.c`): each slot is the newer (by the file's time) of `ROCP.SGn` and
-`ROC.SGn`; saving always writes `ROCP.SGn`, so a game saved last in either program is the one
-the menus show and load. ROC.SGT (the original's reader save, deleted once restored) is never
-read. The animator table is read from ROC.EXE at start. Unlike the original, the port gives a
-wisp's lights the nearest wisp (the pointer it kept is meaningless) and leaves `_quitflag` at 0.
+An object without an image (the cameras, a hidden wisp) is saved as the index of the first
+empty `_Img` slot (STOREOBJECTINFO's search finds a null far pointer there), and MAKEOBJECT reads
+`_Img[n]` back as it is, null again; the port does the same (loading that slot's set would give a
+camera a sprite).
+
+**The port** (`src/save.c`): each slot is the newer (by the file's time, to the second) of
+`ROCP.SGn` and `ROC.SGn`. Saving a slot writes both: `ROC.SGn` first in the original's format
+(SAVEGAME / STOREOBJECTINFO, so the DOS game can load it), then `ROCP.SGn` with the port's whole
+state, which is then never the older, so the port reloads its own. ROC.SGT (the original's reader
+save, deleted once restored) is neither read nor written. The animator table is read from ROC.EXE
+at start; an animator missing from it (none is known) fails only the `ROC.SGn`. The tiles are
+renumbered with TILEBUFFOPTI's numbering worked out when the level started (taking a gem can
+remove a tile's last use, which would shift it). Bits 6-7 of the inventory byte, the 6 bytes past
+the BGMAP and an object's OldAnimator when none was set (NULLANIMATOR, as INITOBJ starts them) are
+written as the port has them. Unlike the original, the port gives a wisp's lights the nearest wisp
+(the pointer it kept is meaningless) and leaves `_quitflag` at 0.
+
+What the original's format can't carry, so a game loaded from it goes on a little differently
+from one loaded from `ROCP.SGn`: the random seed, `_DragonMove` (the dragon's necks), the order of
+objects of equal priority (ADDPLINKNODE puts them back reversed, so they draw their random numbers
+in another order), the raft's front piece until the raft comes into view, and reflections parked
+off screen (made again at their parents). Checked: castle1 loaded from the DOS game's ROC.SG0 and
+saved at once by the port gives a ROC.SG3 of the same size whose BGMAP is byte for byte the
+original's (the renumbering round-trips), with the same 55 objects (lists, priorities, animators,
+images); the rest differs only by the ticks played in between. Saving on each of the 27 levels and
+loading each format back gives the same player, inventory, counts and objects, but for the
+differences above (levels 7, 8, 9, 10 and 26; with the seed forced equal, level 7 is identical).
+Not yet tried in the DOS game itself.

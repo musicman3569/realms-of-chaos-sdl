@@ -5,8 +5,9 @@
  * the same keys and settings, and leaves what it doesn't use, such as the sound card, as it
  * found it). The port saves games in its own format, ROCP.SG0-7 (and ROCP.SGT for the game the
  * reader leaves, ROC.SGT in the original), with the original's header (an ident, a version, the
- * 20-character description, the level) and the port's whole state after it. It also loads the
- * original's ROC.SG0-7 (RESTOREGAME / MAKEOBJECT), and never writes them. */
+ * 20-character description, the level) and the port's whole state after it. It also reads and
+ * writes the original's ROC.SG0-7 (SAVEGAME, RESTOREGAME / MAKEOBJECT): saving a slot writes
+ * both files, so the DOS game can load what the port saved. */
 #ifndef ROC_SAVE_H
 #define ROC_SAVE_H
 
@@ -46,8 +47,8 @@ void hs_read(hscore_t *h);
 void hs_write(const hscore_t *h);
 
 /* Saved games: slots 1-8, or RESTORE_TEMP. Each slot is the newer of the port's ROCP.SGn and
- * the original's ROC.SGn (read only: the port saves in its own format); save_load_tables reads
- * the animator table the original's files number their animators by from ROC.EXE. */
+ * the original's ROC.SGn, and saving writes both; save_load_tables reads the animator table the
+ * original's files number their animators by from ROC.EXE. */
 bool save_load_tables(const char *exe_path);
 bool save_game(int slot, const char *desc);        /* SAVEGAME: false on a file error */
 bool save_describe(int slot, char desc[21]);       /* the slot's description, if it holds a game */

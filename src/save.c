@@ -3,6 +3,7 @@
 
 #include "engine.h"
 #include "game.h"
+#include "host.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -408,10 +409,9 @@ static int name_number(const char *name)
     BYTES(G.virt_pal, 768); BYTES(G.level_pal, 768); BYTES(G.lv->palette, 768);                 \
     BYTES(dragon_move, sizeof dragon_move)
 
-bool save_game(int slot, const char *desc)
+/* The port's own format: everything, pointers as object numbers. */
+static bool save_port(int slot, const char *desc)
 {
-    if (!G.lv)
-        return false;
     buf_t b = {0};
     put(&b, ident, 5);
     put8(&b, SAVE_VERSION);
@@ -465,6 +465,221 @@ bool save_game(int slot, const char *desc)
     const bool ok = !b.bad && write_file(name, b.p, b.len);
     free(b.p);
     return ok;
+}
+
+/* An animator's number in the DS:059a table (no Animator counts as NULLANIMATOR, as INITOBJ and
+ * SPAWNOBJ start every object with it), or -1 if the table hasn't it (STOREOBJECTINFO stops the
+ * game with an error then). */
+static int anim_number(uint16_t animator)
+{
+    if (animator == 0)
+        animator = A_NULLANIMATOR;
+    for (int i = 0; i < anim_count; i++)
+        if (anim_table[i] == animator)
+            return i;
+    return -1;
+}
+
+/* The objects SAVEGAME leaves out of the main list (and of the off-screen list's objects whose
+ * home is the main list): reflections and the raft's front piece. */
+static bool not_saved(const obj_t *o)
+{
+    return o->animator == A_DOREFLECTION || (o->priority == 0x18 && o->animator == A_NULLANIMATOR);
+}
+
+/* RXSAVEF.C:273 STOREOBJECTINFO: one object (see restore_original). */
+static bool put_object(buf_t *b, const obj_t *o, int list_num)
+{
+    const int animator = anim_number(o->animator), old_animator = anim_number(o->old_animator);
+    if (animator < 0 || old_animator < 0) {
+        fprintf(stderr, "roc: animator %04x isn't in the original's table\n",
+                animator < 0 ? o->animator : o->old_animator);
+        return false;
+    }
+    /* the image's _Img index; none (or the port's empty frame) is the first empty slot, as the
+     * original finds a null ImageID */
+    int image = game_image_index(o->image);
+    for (int i = 0; image < 0 && i < IMG_COUNT; i++)
+        if (!G.img[i])
+            image = i;
+    int global = 0;
+    if (o == G.you)
+        global = 1;
+    else if (o == G.boss)
+        global = 2;
+    else if (o == G.hit_pts)
+        global = 3;
+    for (int i = 1; global == 0 && i < 5; i++)
+        if (o == G.neck[i])
+            global = 3 + i;
+    put8(b, (unsigned)list_num);
+    put8(b, (uint8_t)o->priority);
+    put16(b, (unsigned)animator);
+    put16(b, (unsigned)old_animator);
+    put16(b, (unsigned)(image < 0 ? 0 : image));
+    put8(b, (unsigned)global);
+    put16(b, o->blinks);
+    put16(b, o->blink_ct);
+    put16(b, o->draw_on);
+    put16(b, o->draw_off);
+    put16(b, o->blink_color);
+    put16(b, o->flags);
+    put8(b, o->xdir);
+    put8(b, o->ydir);
+    put16(b, o->x);
+    put16(b, o->y);
+    put16(b, o->xpart);
+    put16(b, o->ypart);
+    put16(b, (uint16_t)o->xspeed);
+    put16(b, (uint16_t)o->yspeed);
+    put16(b, o->xsize);
+    put16(b, o->ysize);
+    put16(b, o->update);
+    put16(b, o->counter);
+    put8(b, o->friction);
+    put8(b, o->frame_no);
+    put8(b, o->max_frames);
+    put8(b, (uint8_t)o->anim_inc);
+    put16(b, o->frame_count);
+    put16(b, o->frame_count_max);
+    put8(b, o->down_offset);
+    put8(b, o->up_offset);
+    for (int k = 0; k < 6; k++)
+        put16(b, (uint16_t)o->gv[k]);
+    put8(b, o->surface_flags);
+    return true;
+}
+
+/* RXSAVEF.C:78 SAVEGAME: the original's ROC.SGn (see restore_original), so the DOS game can load
+ * a game the port saved. What the port keeps beyond it (the random seed, a wisp light's wisp,
+ * the dragon's delay lines...) isn't in it, as in the original. */
+static bool save_original(int slot, const char *desc)
+{
+    if (anim_count == 0)
+        return false;
+    buf_t b = {0};
+    put(&b, orig_ident, 5);
+    put8(&b, SAVE_NONE);
+    char d[20] = {0};
+    memcpy(d, desc, strnlen(desc, 19));
+    put(&b, d, 20);
+    put8(&b, G.level);
+    int count = 0;
+    for (int id = 0; id < LIST_COUNT; id++)
+        for (const obj_t *o = G.list[id]; o; o = o->next)
+            count += !(o->list == LIST_MAIN && not_saved(o));
+    put16(&b, (unsigned)count);
+
+    /* the maps, the cells' tiles numbered as TILEBUFFOPTI would have them (the lowest number
+     * of a tile wins: the numbers above the compacted ones are left over) */
+    uint16_t tile[512], number[512];
+    animtile_opti_numbers(tile);
+    for (int n = 0; n < 512; n++)
+        number[n] = (uint16_t)n;
+    for (int n = 511; n >= 0; n--)
+        number[tile[n] & 0x1FF] = (uint16_t)n;
+    const int cells = G.lv->rows * G.lv->cols;
+    put8(&b, (unsigned)G.lv->rows);
+    put8(&b, (unsigned)G.lv->cols);
+    for (int i = 0; i < cells; i++)
+        put16(&b, (G.lv->bg[i] & 0xFE00u) | number[G.lv->bg[i] & 0x1FF]);
+    static const uint8_t past[6]; /* (memory past the BGMAP in the original) */
+    put(&b, past, sizeof past);
+    put16(&b, (unsigned)G.lv->cols);
+    put(&b, G.lv->fg, (size_t)cells);
+
+    uint8_t pal[768];
+    host_get_palette(pal);
+    put16(&b, G.org_x);
+    put16(&b, G.org_y);
+    put16(&b, G.vine_x);
+    put16(&b, G.vine_y);
+    put16(&b, (uint16_t)G.hitagain);
+    put16(&b, G.monster_counter);
+    put8(&b, G.monster_number);
+    put8(&b, G.free_hit);
+    put8(&b, Inv.flags);
+    put(&b, Inv.hit_points, 2);
+    put(&b, Inv.max_hit_points, 2);
+    put(&b, G.old_inv.max_hit_points, 2);
+    put(&b, Inv.weapon_status, 2);
+    put8(&b, (uint8_t)G.lightning_flag);
+    put8(&b, G.diff_mode);
+    put8(&b, G.free_hit);
+    put32(&b, Inv.score);
+    put32(&b, G.old_inv.score);
+    put32(&b, G.next_score_up);
+    put32(&b, G.old_next_score_up);
+    put16(&b, Inv.gems);
+    put16(&b, G.old_inv.gems);
+    put16(&b, G.window_xsize);
+    put8(&b, G.window_ysize);
+    put8(&b, (uint8_t)G.center_off);
+    put8(&b, G.hit_release);
+    put8(&b, (uint8_t)G.whip_fn);
+    put8(&b, (uint8_t)G.whip_ai);
+    put8(&b, (uint8_t)G.whip_fc);
+    put8(&b, (uint8_t)G.whip_fcm);
+    put8(&b, (uint8_t)G.looking);
+    put(&b, pal, sizeof pal);
+    put16(&b, G.game_flags);
+    put16(&b, G.old_game_flags);
+    put8(&b, L.quit_game);
+    put8(&b, G.quitflag);
+    put16(&b, G.gem_in_level);
+    put16(&b, G.enemy_in_level);
+    put16(&b, G.statue_in_level);
+    put16(&b, G.secret_in_level);
+    put16(&b, G.gem_found);
+    put16(&b, L.gem_total);
+    put16(&b, G.enemy_found);
+    put16(&b, L.enemy_total);
+    put16(&b, G.statue_found);
+    put16(&b, L.statue_total);
+    put16(&b, G.secret_found);
+    put16(&b, L.secret_total);
+    put16(&b, L.hour_total);
+    put16(&b, L.minute_total);
+    put16(&b, L.second_total);
+    put16(&b, L.gem_total);
+    put8(&b, G.minute_in_level);
+    put8(&b, G.second_in_level);
+    put16(&b, L.gem_final);
+    put16(&b, L.enemy_final);
+    put16(&b, L.statue_final);
+    put16(&b, L.secret_final);
+    put16(&b, G.timer_fix);
+    put32(&b, G.level_tics);
+    put32(&b, G.next_second);
+    put8(&b, L.return_level);
+
+    /* main, fore and slow lists, then the off-screen list by home list (3-5) */
+    bool ok = true;
+    for (int id = 0; id < LIST_OFF && ok; id++)
+        for (const obj_t *o = G.list[id]; o && ok; o = o->next)
+            if (!(id == LIST_MAIN && not_saved(o)))
+                ok = put_object(&b, o, id);
+    for (const obj_t *o = G.list[LIST_OFF]; o && ok; o = o->next)
+        if (!(o->list == LIST_MAIN && not_saved(o)))
+            ok = put_object(&b, o, LIST_OFF + o->list);
+
+    char name[16];
+    snprintf(name, sizeof name, "ROC.SG%c", '0' + slot - 1);
+    ok = ok && !b.bad && write_file(name, b.p, b.len);
+    free(b.p);
+    return ok;
+}
+
+/* SAVEGAME: slots 1-8 are written in both formats, the original's ROC.SGn first, so the port's
+ * ROCP.SGn is never the older (original_slot) and the port loads its own; the DOS game reads
+ * ROC.SGn. The reader's save is the port's only. */
+bool save_game(int slot, const char *desc)
+{
+    if (!G.lv)
+        return false;
+    if (slot >= 1 && slot <= SAVE_SLOTS && !save_original(slot, desc))
+        fprintf(stderr, "roc: couldn't write ROC.SG%c in the original's format\n", '0' + slot - 1);
+    return save_port(slot, desc);
 }
 
 /* Read a slot's file: the port's, or the original's (both start with the same header). */
@@ -675,7 +890,9 @@ static bool restore_original(buf_t *b)
             b->bad = true;
             break;
         }
-        o->image = game_image((int)image);
+        /* _Img[n] as it is: an object without an image (a camera, a hidden wisp) was saved as
+         * the first empty slot, which is empty again now */
+        o->image = image < IMG_COUNT ? G.img[image] : NULL;
         o->animator = anim_table[animator];
         o->old_animator = anim_table[old_animator];
         switch (global) {

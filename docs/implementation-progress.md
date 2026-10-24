@@ -108,8 +108,8 @@ B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu)
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
 fly mode (Ctrl lands). F12 saves `shotNNN.png` (the port's). In the menus: up / down or a line's
 first letter, Enter (or attack) picks, Esc (or jump) goes back. ROC.CFG, roc.sco (the Hall of
-Heroes) and the saved games (the port's own `ROCP.SG0-7`; the original's `ROC.SG0-7` load too,
-whichever of a slot's two is newer) live in the game's folder, or in
+Heroes) and the saved games (saving writes the port's `ROCP.SGn` and the original's `ROC.SGn`;
+loading takes whichever of a slot's two is newer) live in the game's folder, or in
 `--data-dir`; headless runs touch no files without `--data-dir`. `--level N` starts a new game
 there without the hero's lightning entrance (the title's "Play a New Game" has it), as the
 headless tests always started. In headless runs the fades are instant, the run stops wherever it
@@ -471,6 +471,18 @@ still time every sound, so the game behaves as it does with sound.
   cell by cell against the levels: only cells the player changed differ) and plays on for 20000
   ticks; whichever of ROC.SG0 / ROCP.SG0 is newer is the one loaded; the documented runs and the
   port's own save / load are unchanged. The original's ROC.SGT (a reader save) isn't read.
+- Port, writing the original's saved games (notes "The original's saved games"): saving a
+  slot writes `ROC.SGn` in the original's format (SAVEGAME / STOREOBJECTINFO in `src/save.c`:
+  the animators by the DS:059a table, images by `_Img` index or the first empty slot, the
+  globals, the tiles renumbered as TILEBUFFOPTI had them, worked out once when the level starts)
+  and then the port's `ROCP.SGn`, which the port goes on loading. Reading fixed on the way: an
+  object without an image (a camera) stays without one instead of loading a sprite set.
+  Verified headless: castle1 from the DOS game's save, saved again by the port, gives a file of
+  the same size with the same BGMAP bytes and the same 55 objects; on all 27 levels a save
+  loaded from either file gives the same report and object list, but where the original's
+  format lacks the seed, `_DragonMove` or the equal-priority order (levels 7-10 and 26, as the
+  DOS game would); the parser in the session scratchpad reads every port-written file to its
+  end; the documented runs are unchanged. Not loaded in the DOS game yet.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -478,9 +490,7 @@ still time every sound, so the game behaves as it does with sound.
 
 ## Next steps
 
-1. Writing the original's saved games too (the port reads ROC.SG0-7 but saves only its own
-   ROCP format; SAVEGAME's format is in the notes, and the cells would need TILEBUFFOPTI's
-   numbering); the OPL3 stereo paths of
+1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; the OPL3 stereo paths of
    AL_MIDI (`_AL_Stereo`, port 222h: only for a Sound Blaster Pro / 16 set up so); a build on
    Linux and macOS; the interactive window, the sound, the animated tiles and the joystick (with
    a real controller) haven't been tried by a person yet.

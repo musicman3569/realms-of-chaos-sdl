@@ -233,9 +233,16 @@ static void init_an_til(int level)
  * _AnTil use, then, from the bottom, moves the highest used tile into each unused place below it
  * (renumbering the map's cells and _AnTil with it) until none is left, and keeps that many
  * tiles. The port draws from the .bg as it is and never does this, but the original's saved games
- * hold the renumbered map, so this replays it on the level as loaded: tile[n] is the .bg's number
- * of the original's tile n. */
+ * hold the renumbered map, so this replays it on the level as loaded (animtile_setup, before
+ * anything changes the map): tile[n] is the .bg's number of the original's tile n. */
+static uint16_t opti_tile[512];
+
 void animtile_opti_numbers(uint16_t tile[512])
+{
+    memcpy(tile, opti_tile, sizeof opti_tile);
+}
+
+static void tile_buff_opti(uint16_t tile[512])
 {
     for (int n = 0; n < 512; n++)
         tile[n] = (uint16_t)n;
@@ -303,6 +310,7 @@ void animtile_setup(void)
 {
     const int level = G.level;
     animtile_free();
+    tile_buff_opti(opti_tile);
     init_an_til(level);
     switch (level) {
     case 0: case 1: case 2: /* the forest */
