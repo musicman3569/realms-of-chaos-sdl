@@ -1,4 +1,14 @@
-/* The CRT look (see crt.h). */
+/* The CRT look (see crt.h).
+ *
+ * This file translates two shaders from RetroArch's slang collection into C, so unlike the rest of
+ * the port (MIT) it is under the GNU General Public License, version 2 or (at your option) any
+ * later version:
+ *   2xsal-level2.slang, Copyright (C) 2016 guest(r) - guest.r@gmail.com, GPL v2 or later;
+ *   dotmask.slang, by cgwg, Timothy Lottes and torridgristle, GPL (Lottes' mask code is public
+ *   domain).
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License (https://www.gnu.org/licenses/) for more details. */
 #include "crt.h"
 
 #include <math.h>
