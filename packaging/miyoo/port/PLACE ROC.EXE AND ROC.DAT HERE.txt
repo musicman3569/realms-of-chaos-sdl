@@ -1,0 +1,3 @@
+Copy ROC.EXE and ROC.DAT from your copy of Realms of Chaos into this folder (or into a folder
+named "game" inside it). Then open Ports, run "~Import ports" so the game shows in the list, and
+start it from there.

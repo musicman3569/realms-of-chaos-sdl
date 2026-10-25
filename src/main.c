@@ -370,7 +370,8 @@ int main(int argc, char **argv)
     const host_options_t ho = {.headless = headless, .ticks = opt.ticks, .holds = opt.holds,
                                .hold_count = opt.hold_count, .fullscreen = opt.fullscreen || (!headless && Enhance.fullscreen),
                                .crt = opt.crt || (!headless && Enhance.crt),
-                               .joystick = opt.joystick || (!headless && Enhance.controller)};
+                               .joystick = opt.joystick ||
+                                           (!headless && (Enhance.controller || HOST_HANDHELD))};
     if (!host_init(&ho)) {
         fprintf(stderr, "roc: can't open the screen\n");
         return 1;

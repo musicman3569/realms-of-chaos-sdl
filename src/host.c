@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { SCALE = 3, MAX_STEP = 100, HEADLESS_STEP = 8 };
+enum { SCALE = 3, MAX_STEP = 100, HEADLESS_STEP = 8, EXTRA_KEYS = 3 };
 
 surface_t Vga;
 jmp_buf host_end;
@@ -48,6 +48,7 @@ static struct {
     int8_t joy_look;             /* the right stick holds PgUp (1) or PgDn (-1) */
     uint8_t joy_button[JOY_BUTTONS]; /* DS:53c6-53c9: each button's state when last read */
     uint8_t joy_key[JOY_BUTTONS];    /* the key each button pressed */
+    uint8_t extra_held[EXTRA_KEYS];  /* the handheld's Select, L2 and R2 */
     int pad_mode;                /* the buttons' layout (PAD_GAME...) */
     bool fullscreen;
 } H;
@@ -125,7 +126,7 @@ bool host_crt(void)
 
 void host_set_crt(bool on)
 {
-    H.crt = on;
+    H.crt = on && !HOST_HANDHELD;
 }
 
 bool host_fullscreen(void)
@@ -135,7 +136,7 @@ bool host_fullscreen(void)
 
 void host_set_fullscreen(bool on)
 {
-    if (H.win && on != H.fullscreen)
+    if (H.win && on != H.fullscreen && !HOST_HANDHELD)
         set_fullscreen(on);
 }
 
@@ -143,7 +144,7 @@ bool host_init(const host_options_t *o)
 {
     memset(&H, 0, sizeof H);
     H.opt = *o;
-    H.crt = o->crt;
+    H.crt = o->crt && !HOST_HANDHELD;
     if (!surface_init(&Vga, SCREEN_W, SCREEN_H))
         return false;
     if (o->headless)
@@ -152,9 +153,13 @@ bool host_init(const host_options_t *o)
         fprintf(stderr, "roc: SDL_Init: %s\n", SDL_GetError());
         return false;
     }
+    /* the handheld's SDL scales the window to the panel keeping its shape, so 640 x 400 is the
+     * picture doubled with black bars above and below it */
+    const int scale = HOST_HANDHELD ? 2 : SCALE;
     H.win = SDL_CreateWindow("Realms of Chaos", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                             SCREEN_W * SCALE, SCREEN_H * SCALE, SDL_WINDOW_RESIZABLE);
-    if (H.win && o->fullscreen)
+                             SCREEN_W * scale, SCREEN_H * scale,
+                             HOST_HANDHELD ? 0 : SDL_WINDOW_RESIZABLE);
+    if (H.win && o->fullscreen && !HOST_HANDHELD)
         set_fullscreen(true);
     H.ren = H.win ? SDL_CreateRenderer(H.win, -1, SDL_RENDERER_PRESENTVSYNC) : NULL;
     H.tex = H.ren ? SDL_CreateTexture(H.ren, SDL_PIXELFORMAT_ARGB8888,
@@ -344,7 +349,9 @@ void host_pad_mode(int mode)
 /* The stick (-32768 to 32767 each way) and the buttons as they are now: bits 0-3 the gameport's
  * buttons 0-3, bit 4 a game controller's Start. A game controller's A, X, B, Y are buttons 0-3,
  * so with ROC.CFG's MyBUTTON0-3 as shipped (jump, attack, the special item, look) A jumps, X
- * attacks and B changes hero, as on an Xbox 360 controller's layout. */
+ * attacks and B changes hero, as on an Xbox 360 controller's layout. The handheld's buttons are
+ * labelled the Nintendo way round (A right, B below, Y left, X above), so there the same places
+ * do the same: B, Y, A, X are buttons 0-3; and L1 / R1 look up / down, as the right stick does. */
 static void read_joystick(int *x, int *y, int *look_y, unsigned *buttons)
 {
     *x = *y = *look_y = 0;
@@ -359,9 +366,18 @@ static void read_joystick(int *x, int *y, int *look_y, unsigned *buttons)
         static const SDL_GameControllerButton face[JOY_BUTTONS] = {
             SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_B,
             SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_START};
+        static const SDL_GameControllerButton handheld[JOY_BUTTONS] = {
+            SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_A,
+            SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_START};
+        const SDL_GameControllerButton *const button = HOST_HANDHELD ? handheld : face;
         *x = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTX);
         *y = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTY);
         *look_y = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_RIGHTY);
+        if (HOST_HANDHELD && SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER))
+            *look_y = -32768;
+        else if (HOST_HANDHELD &&
+                 SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER))
+            *look_y = 32767;
         if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
             *x = -32768;
         else if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
@@ -371,7 +387,7 @@ static void read_joystick(int *x, int *y, int *look_y, unsigned *buttons)
         else if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN))
             *y = 32767;
         for (int b = 0; b < JOY_BUTTONS; b++)
-            *buttons |= (unsigned)(SDL_GameControllerGetButton(H.pad, face[b]) != 0) << b;
+            *buttons |= (unsigned)(SDL_GameControllerGetButton(H.pad, button[b]) != 0) << b;
     } else if (H.stick) {
         if (SDL_JoystickNumAxes(H.stick) >= 2) {
             *x = SDL_JoystickGetAxis(H.stick, 0);
@@ -411,8 +427,9 @@ static void set_action(int action, uint8_t on)
 
 /* The key button b presses (the port's): Start is Esc everywhere (the main menu in a level, back
  * in the menus). In a level each gameport button presses the key its _MyBUTTON names, as
- * MYJOYREADER does. In the menus and windows button 0 (A) is Enter and button 2 (B) Esc; at a
- * "Press Y" prompt the attack button (X) and button 3 (Y) are Y as well. */
+ * MYJOYREADER does. In the menus and windows button 0 (A) is Enter and button 2 (B) Esc (on the
+ * handheld A, button 2, is Enter and B, button 0, Esc, as its own menus have them); at a "Press
+ * Y" prompt the attack button (X) and button 3 (Y) are Y as well. */
 static int button_scancode(int b)
 {
     if (b == 4)
@@ -420,9 +437,9 @@ static int button_scancode(int b)
     const int k = Sess.key_trans[Sess.my_button[b] & 7] & 0x7F;
     if (H.pad_mode == PAD_GAME)
         return k;
-    if (b == 0)
+    if (b == (HOST_HANDHELD ? 2 : 0))
         return 0x1C;
-    if (b == 2)
+    if (b == (HOST_HANDHELD ? 0 : 2))
         return 0x01;
     if (H.pad_mode == PAD_PROMPT && ((Sess.my_button[b] & 7) == K_ATTACK || b == 3))
         return 0x15;
@@ -477,6 +494,18 @@ static void my_joy_reader(void)
                 H.joy_key[b] = (uint8_t)button_scancode(b);
             H.keys[H.joy_key[b]] = on;
         }
+    }
+    /* (the Miyoo build's) the handheld's other buttons hold keys of their own: Select the status
+     * window (Tab), L2 / R2 quick save / quick load (F8 / F9) */
+    if (HOST_HANDHELD && H.pad) {
+        static const uint8_t key[EXTRA_KEYS] = {0x0F, 0x42, 0x43};
+        const uint8_t on[EXTRA_KEYS] = {
+            SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_BACK) != 0,
+            SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16384,
+            SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16384};
+        for (int i = 0; i < EXTRA_KEYS; i++)
+            if (on[i] != H.extra_held[i])
+                H.keys[key[i]] = H.extra_held[i] = on[i];
     }
 }
 
@@ -631,6 +660,9 @@ int host_frame(void)
     present();
 
     const double freq = (double)SDL_GetPerformanceFrequency();
+    /* the handheld's SDL presents at once if the panel can't wait for its vsync, so a frame there
+     * lasts at least a 60th of a second (9 ticks), as vsync makes it elsewhere */
+    const int min_ticks = HOST_HANDHELD ? 9 : 1;
     int ticks = 0;
     for (;;) {
         SDL_Event e;
@@ -677,7 +709,7 @@ int host_frame(void)
         H.acc += (double)(now - H.last) / freq * TICKS_PER_SECOND;
         H.last = now;
         ticks = (int)H.acc;
-        if (ticks >= 1)
+        if (ticks >= min_ticks)
             break;
         SDL_Delay(1);
     }

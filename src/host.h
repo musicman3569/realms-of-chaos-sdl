@@ -18,6 +18,15 @@
 
 enum { SCREEN_W = 320, SCREEN_H = 200 };
 
+/* The build for the Miyoo Mini (Plus) under OnionUI (CMake's ROC_MIYOO; packaging/miyoo): the
+ * picture always fills the panel, there's no CRT look (the CPU can't spare it), and the
+ * handheld's buttons are the game controller, always on. */
+#ifdef ROC_MIYOO
+enum { HOST_HANDHELD = 1 };
+#else
+enum { HOST_HANDHELD = 0 };
+#endif
+
 /* The screen and its palette (6-bit VGA components; _GammaCorrect is added when it's shown). */
 extern surface_t Vga;
 void host_set_palette(const uint8_t *pal);  /* SETPALETTE */

@@ -26,6 +26,14 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
   (Ubuntu 22.04, SDL2 2.32.10 from source, bundled; the program needs glibc 2.34). It builds the
   image with `--network host` and runs the build with no network, as appimagetool's runtime is
   fetched into the image.
+- Miyoo Mini (Plus) under OnionUI: `packaging/miyoo/build-onion-port.sh` cross-compiles in Docker
+  (Ubuntu 22.04 for CMake, shauninman's miyoomini-toolchain v0.0.3: GCC 8.3, glibc 2.28;
+  XK9274's sdl2_miyoo release 178fc0fc, SDL 2.0.20, prebuilt, with the headers of that commit;
+  both downloads pinned by SHA-256) and writes `dist/RealmsOfChaos-OnionUI.zip`. Warning-free with
+  GCC 8.3. To test the ARM binary without the device: an image `FROM roc-miyoo-build` with
+  Ubuntu's `qemu-user`, running the packaged `roc` with `QEMU_LD_PREFIX` at the toolchain's
+  sysroot and an empty stub `libcam_os_wrapper.so` (the vendor library only the device has) on
+  `LD_LIBRARY_PATH`; headless runs then work (`build/miyoo-test/run.sh`, not committed).
 - Python: **no system Python**. Use `C:\Users\Jason\anaconda3\envs\ghidra\python.exe -I`.
 - Ghidra has `game/ROC.EXE` loaded (it isn't packed) with the Turbo Debugger symbols applied:
   original function and variable names, prototypes, structs and source lines. GhidraMCP's
@@ -593,6 +601,32 @@ Enhancements menu) plays it.
   ROCP.CFG); without a game it lists the folders; a windowed start on SDL's dummy drivers runs.
   The AppImage needs libc and libm only, besides its own SDL2. Not yet tried on a real screen
   under Linux, nor on a Steam Deck or Bazzite.
+- Port, the Miyoo Mini (Plus) under OnionUI (the port's; asked for by the user): CMake's
+  `ROC_MIYOO` (`HOST_HANDHELD` in `src/host.h`, a constant so both builds compile all the code).
+  In `src/host.c`: a 640 x 400 window (sdl2_miyoo scales the window to the 640 x 480 panel keeping
+  its shape, so that's the picture doubled, letterboxed), no CRT look or full screen; the buttons
+  are SDL's game controller (sdl2_miyoo's default input mode gives one with a gamepad mapping), on
+  whatever ROCP.CFG says. The handheld labels its buttons the Nintendo way, so B, Y, A, X are the
+  gameport's buttons 0-3 (the places of an Xbox pad's A, X, B, Y), while in the menus A is Enter
+  and B Esc, as OnionUI's own menus; L1 / R1 look up / down (as the right stick), Select is Tab (the
+  status window), L2 / R2 F8 / F9. A frame lasts at least 9 ticks there, since sdl2_miyoo presents
+  unsynchronised if the panel can't wait for vsync. `src/ui.c`'s Enhancements menu shows only
+  Music and Title Scream there. `packaging/miyoo/`: the Dockerfile, the CMake toolchain file, an
+  SDL2Config.cmake for the prebuilt library, the build script and the port's files: `Realms of
+  Chaos.port` (shipped as `.notfound` in Shortcuts/Platform, which Ports' "~Import ports" renames
+  once ROC.DAT is in the game folder; OnionUI's `launch_standalone.sh` runs `roc` in
+  `Roms/PORTS/Games/Realms of Chaos` with its `lib` on `LD_LIBRARY_PATH`, after stopping the audio
+  server for SDL's MI_AO driver), a README with the controls, `_required_files.txt` and the
+  title screen as the list's picture. `find_game` already finds the game beside the program or in
+  a `game` folder there. Verified: under qemu-arm the packaged ARM binary gives byte-identical
+  reports and screenshots to the x86 build in 63 headless runs (the documented ones, and every
+  level 20,000 ticks with each hero, sweeping and attacking); the PC build's documented runs are
+  unchanged; an x86 build with `ROC_MIYOO` shows the two-line Enhancements menu, runs windowed on
+  SDL's dummy drivers at about 10% of a core where the PC build without vsync takes a whole one,
+  and saves its settings when sent SIGTERM (SDL's quit). Played by the user on a Miyoo Mini Plus:
+  it works, stereo music included, at the .port's PerformanceMode=0 (if a level ever stutters,
+  Music: Mono halves the emulated AdLib's work, and PerformanceMode=1 sets the CPU governor to
+  performance).
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,

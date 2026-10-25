@@ -1,0 +1,11 @@
+/mnt/SDCARD/Roms/PORTS/Games/Realms of Chaos
+├── PLACE ROC.EXE AND ROC.DAT HERE.txt
+├── ROC.EXE        <- from your copy of the game (registered version 1.00)
+├── ROC.DAT        <- from your copy of the game
+├── roc
+├── README.txt
+└── lib
+    ├── libneonarmmiyoo.so
+    ├── libSDL2-2.0.so.0
+    ├── SDL2-LICENSE.txt
+    └── sdl2_miyoo-LICENSE.txt

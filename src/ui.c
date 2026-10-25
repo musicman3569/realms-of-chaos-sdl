@@ -708,34 +708,41 @@ static int check_password(int type)
 }
 
 /* The port's Enhancements menu (in OPTIONMENU): what the port adds to the original, each line
- * turning one on or off at once. The choices are remembered in ROCP.CFG (Enhance). */
+ * turning one on or off at once. The choices are remembered in ROCP.CFG (Enhance). The handheld
+ * has no CRT look, is always full screen and always has its controller, so it shows the last two. */
 static void enhance_menu(void)
 {
+    enum { CRT, FULL_SCREEN, CONTROLLER, MUSIC, TITLE_SCREAM, LINES };
     for (;;) {
         const bool stereo = al_stereo();
-        const char *const menu[] = {host_crt() ? "CRT Filter: On" : "CRT Filter: Off",
-                                    host_fullscreen() ? "Full Screen: On" : "Full Screen: Off",
-                                    host_controller() ? "Controller Support: On"
-                                                      : "Controller Support: Off",
-                                    stereo ? "Music: Stereo" : "Music: Mono",
-                                    game_title_scream ? "Title Scream: On" : "Title Scream: Off",
-                                    NULL};
-        open_menu(menu, 0x28, 0x12, default_pal() ? "{2}ENHANCEMENTS" : "{3}ENHANCEMENTS");
+        const char *const all[LINES] = {host_crt() ? "CRT Filter: On" : "CRT Filter: Off",
+                                        host_fullscreen() ? "Full Screen: On" : "Full Screen: Off",
+                                        host_controller() ? "Controller Support: On"
+                                                          : "Controller Support: Off",
+                                        stereo ? "Music: Stereo" : "Music: Mono",
+                                        game_title_scream ? "Title Scream: On"
+                                                          : "Title Scream: Off"};
+        const int first = HOST_HANDHELD ? MUSIC : CRT;
+        const char *menu[LINES + 1] = {NULL};
+        for (int i = first; i < LINES; i++)
+            menu[i - first] = all[i];
+        open_menu(menu, 0x28, 0x12 - first * 2, default_pal() ? "{2}ENHANCEMENTS" : "{3}ENHANCEMENTS");
         const int sel = select_menu(menu, 5);
         close_menu();
-        if (sel == 1) {
+        const int line = sel >= 1 && sel <= LINES - first ? first + sel - 1 : LINES;
+        if (line == CRT) {
             Enhance.crt = !host_crt();
             host_set_crt(Enhance.crt);
-        } else if (sel == 2) {
+        } else if (line == FULL_SCREEN) {
             host_set_fullscreen(!host_fullscreen());
             Enhance.fullscreen = host_fullscreen();
-        } else if (sel == 3) {
+        } else if (line == CONTROLLER) {
             Enhance.controller = !host_controller();
             host_set_controller(Enhance.controller);
-        } else if (sel == 4) {
+        } else if (line == MUSIC) {
             Enhance.stereo_music = !stereo;
             music_set_stereo(Enhance.stereo_music);
-        } else if (sel == 5) {
+        } else if (line == TITLE_SCREAM) {
             Enhance.title_scream = game_title_scream = !game_title_scream;
         } else {
             break;

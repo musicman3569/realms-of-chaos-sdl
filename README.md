@@ -84,6 +84,41 @@ Non-Steam Game to My Library > Browse) to play it in Gaming Mode; the Deck's con
 game controller (Controller Support is on by default). The settings, scores and saves are
 written in the game's folder, so it must be writable.
 
+### The Miyoo Mini (Plus) under OnionUI
+
+```
+packaging/miyoo/build-onion-port.sh
+```
+
+cross-compiles the port in a Docker container and builds `dist/RealmsOfChaos-OnionUI.zip`, laid
+out as OnionUI's [Ports Collection](https://github.com/OnionUI/Ports-Collection) lays out its
+engine ports. The container has the Miyoo Mini toolchain from shauninman's
+[union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain) (GCC 8.3,
+glibc 2.28) and XK9274's [sdl2_miyoo](https://github.com/XK9274/sdl2_miyoo), an SDL 2.0.20 with
+drivers for the handheld's display, sound and buttons, which goes into the zip. Only Docker is
+needed on the build machine. It has been played on a Miyoo Mini Plus, stereo music included.
+
+To install it, extract the zip to the root of the SD card, copy `ROC.EXE` and `ROC.DAT` into
+`Roms/PORTS/Games/Realms of Chaos/`, then in Ports run "~Import ports": Realms of Chaos appears
+under Platform. The settings, scores and saves are kept in that folder too.
+
+The build for the handheld (CMake's `ROC_MIYOO`) shows the picture doubled to 640 x 400 with
+black bars, has no CRT filter, and always uses the handheld's buttons as the game controller.
+They keep the places of an Xbox pad's buttons in a level, and the handheld's own meanings in
+the menus:
+
+| Button | In a level | Menus and windows |
+|--------|------------|-------------------|
+| D-pad | walk, climb, crouch | move |
+| B | jump | Esc (back) |
+| Y | attack | pick (as the attack key) |
+| A | the special item (change hero) | Enter |
+| X | look (with up / down) | Y at "Press Y" prompts (as Y does) |
+| L1 / R1 | look up / down | turn the reader's pages |
+| Start | the main menu | Esc (back) |
+| Select | the status window | |
+| L2 / R2 | quick save / quick load | |
+
 ### Run
 
 ```

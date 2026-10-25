@@ -52,6 +52,12 @@ if(NOT WIN32)
     target_link_libraries(roc PRIVATE m)
 endif()
 
+# The build for the Miyoo Mini (Plus) under OnionUI (packaging/miyoo/build-onion-port.sh)
+option(ROC_MIYOO "Build for the Miyoo Mini (Plus) handheld" OFF)
+if(ROC_MIYOO)
+    target_compile_definitions(roc PRIVATE ROC_MIYOO)
+endif()
+
 if(MSVC)
     target_compile_options(roc PRIVATE /W4)
 else()
