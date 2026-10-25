@@ -89,6 +89,8 @@ build/roc.exe game/ROC.EXE --level 1 --difficulty 3 --invincible --ticks 6000 --
 # headless with the scripted joystick: the stick right, button0 (A: jump, by ROC.CFG's MyBUTTON0;
 # button1-3 are X, B, Y, and start is Start)
 build/roc.exe game/ROC.EXE --level 0 --joystick --ticks 3000 --hold joyright:0-3000,button0:1000-1100 --screenshot out.png
+# headless: the controller's right stick held up (lookdown for down): the view rises from y 59 to 7
+build/roc.exe game/ROC.EXE --level 14 --joystick --ticks 1500 --hold lookup:500-1500 --screenshot out.png
 # headless: the fly-mode cheat (D + CapsLock + X held as PC scancodes), flying up and right
 build/roc.exe game/ROC.EXE --level 0 --ticks 3000 --hold 0x20:500-520,0x3a:500-520,0x2d:500-520,up:600-900,right:600-2000 --screenshot out.png
 # headless: the pause window (Tab, PC scancode 0x0f, held at tick 600), with 25000 points (two bonuses)
@@ -106,7 +108,8 @@ default): arrows, Ctrl jump, Alt attack (the whip, or the female's fireballs), S
 item (change hero), Enter + up / down (or PgUp / PgDn) look; Esc the main menu, F1 help, F2 / F3
 save / load, F8 / F9 quick save / load, F5 status display on / off, F6 / Tab / Pause the status
 window, F4 the sound volumes, F10 quit, F11 gamma; a joystick or game controller when ROC.CFG turns it on (SETUP's choice) or
-with `--joystick` (the stick or D-pad moves; in a level A / X / B / Y press the keys ROC.CFG's
+with `--joystick` (the stick or D-pad moves, a game controller's right stick up / down looks up /
+down, as PgUp / PgDn, and turns the reader's pages; in a level A / X / B / Y press the keys ROC.CFG's
 MyBUTTON0-3 name: jump, attack, the special item and look as shipped; in the menus A is Enter and
 B goes back; at a "Press Y" prompt X or Y says yes; Start is Esc, the main menu); the cheats: Backspace held,
 then PRIME, MAGMA, ASTRAL, FIRE, RAIN, WIND or ETHER (the warp menu), and D + CapsLock + X the
@@ -559,6 +562,16 @@ Enhancements menu) plays it.
   Verified headless: a fresh `--data-dir` gets crt, fullscreen, controller and stereo_music 1 and
   title_scream 0; Controller Support turns on (and with `--joystick`, off) and is written; the
   scripted joystick and keyboard runs and the title run are unchanged.
+- Port, looking with the controller (the port's; asked for by the user): a game controller's right
+  stick pushed up or down past half its throw holds PgUp or PgDn (MYJOYREADER's way, in
+  `my_joy_reader`, `src/host.c`), PROCESSLEVEL's own keys to look without the look key, so the
+  original's looking runs as it is and the player doesn't get an up / down too (the look key with
+  the left stick, Y + up as shipped, works as before). It lets go when the stick comes back or
+  Controller Support is turned off. Scripted holds `lookup` / `lookdown` (HOLD_JOY + 9 / 10,
+  `JOY_HOLDS`). Verified headless on level 14: the right stick up takes the view from y 59 to 7 and
+  down to 105 over 1000 ticks, tick for tick as PgUp / PgDn and the look key + up do; let go, the
+  view comes back; without the controller it does nothing; in the help reader it turns the page as
+  PgDn does; the joystick and title runs are unchanged. Not yet tried with a real controller.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,

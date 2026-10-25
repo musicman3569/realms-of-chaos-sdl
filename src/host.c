@@ -41,10 +41,11 @@ static struct {
     double acc;
     int shot;
     uint8_t hold_prev[128];      /* headless: the keys the holds held at the frame before */
-    uint8_t joy_held[4 + JOY_BUTTONS]; /* headless: the scripted joystick (HOLD_JOY + n) */
+    uint8_t joy_held[JOY_HOLDS]; /* headless: the scripted joystick (HOLD_JOY + n) */
     SDL_GameController *pad;     /* the joystick, as a game controller */
     SDL_Joystick *stick;         /* or as a plain joystick */
     uint8_t joy_x, joy_y;        /* DS:53ca / 53cb: the stick holds the arrow keys */
+    int8_t joy_look;             /* the right stick holds PgUp (1) or PgDn (-1) */
     uint8_t joy_button[JOY_BUTTONS]; /* DS:53c6-53c9: each button's state when last read */
     uint8_t joy_key[JOY_BUTTONS];    /* the key each button pressed */
     int pad_mode;                /* the buttons' layout (PAD_GAME...) */
@@ -344,13 +345,14 @@ void host_pad_mode(int mode)
  * buttons 0-3, bit 4 a game controller's Start. A game controller's A, X, B, Y are buttons 0-3,
  * so with ROC.CFG's MyBUTTON0-3 as shipped (jump, attack, the special item, look) A jumps, X
  * attacks and B changes hero, as on an Xbox 360 controller's layout. */
-static void read_joystick(int *x, int *y, unsigned *buttons)
+static void read_joystick(int *x, int *y, int *look_y, unsigned *buttons)
 {
-    *x = *y = 0;
+    *x = *y = *look_y = 0;
     *buttons = 0;
     if (H.opt.headless) {
         *x = H.joy_held[0] ? -32768 : H.joy_held[1] ? 32767 : 0;
         *y = H.joy_held[2] ? -32768 : H.joy_held[3] ? 32767 : 0;
+        *look_y = H.joy_held[4 + JOY_BUTTONS] ? -32768 : H.joy_held[5 + JOY_BUTTONS] ? 32767 : 0;
         for (int b = 0; b < JOY_BUTTONS; b++)
             *buttons |= (unsigned)H.joy_held[4 + b] << b;
     } else if (H.pad) {
@@ -359,6 +361,7 @@ static void read_joystick(int *x, int *y, unsigned *buttons)
             SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_START};
         *x = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTX);
         *y = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_LEFTY);
+        *look_y = SDL_GameControllerGetAxis(H.pad, SDL_CONTROLLER_AXIS_RIGHTY);
         if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
             *x = -32768;
         else if (SDL_GameControllerGetButton(H.pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
@@ -434,9 +437,9 @@ static int button_scancode(int b)
  * even if the layout changed meanwhile. */
 static void my_joy_reader(void)
 {
-    int x, y;
+    int x, y, look_y;
     unsigned buttons;
-    read_joystick(&x, &y, &buttons);
+    read_joystick(&x, &y, &look_y, &buttons);
     const int tx = joy_threshold(Sess.joy_cal[1], Sess.joy_cal[2]);
     const int ty = joy_threshold(Sess.joy_cal[4], Sess.joy_cal[5]);
     if (x < -tx || x > tx) {
@@ -456,6 +459,15 @@ static void my_joy_reader(void)
         H.joy_y = 0;
         set_action(K_UP, 0);
         set_action(K_DOWN, 0);
+    }
+    /* (the port's) a game controller's right stick pushed up or down past half its throw holds
+     * PgUp or PgDn, PROCESSLEVEL's keys to look up and down (and the reader's to turn pages), and
+     * lets go of it once back, as the stick does the arrows */
+    const int look = look_y < -16384 ? 1 : look_y > 16384 ? -1 : 0;
+    if (look != H.joy_look) {
+        H.keys[0x49] = look == 1;
+        H.keys[0x51] = look == -1;
+        H.joy_look = (int8_t)look;
     }
     for (int b = 0; b < JOY_BUTTONS; b++) {
         const uint8_t on = (buttons >> b) & 1;
@@ -489,6 +501,9 @@ void host_set_controller(bool on)
         set_action(K_DOWN, 0);
     }
     H.joy_x = H.joy_y = 0;
+    if (H.joy_look)
+        H.keys[0x49] = H.keys[0x51] = 0;
+    H.joy_look = 0;
     for (int b = 0; b < JOY_BUTTONS; b++) {
         if (H.joy_button[b])
             H.keys[H.joy_key[b]] = 0;
@@ -525,7 +540,7 @@ static int headless_frame(void)
             continue;
         if (h->scancode > 0 && h->scancode < 128)
             held[h->scancode] = 1;
-        else if (h->scancode >= HOLD_JOY && h->scancode < HOLD_JOY + 4 + JOY_BUTTONS)
+        else if (h->scancode >= HOLD_JOY && h->scancode < HOLD_JOY + JOY_HOLDS)
             H.joy_held[h->scancode - HOLD_JOY] = 1;
     }
     for (int k = 0; k < 128; k++)

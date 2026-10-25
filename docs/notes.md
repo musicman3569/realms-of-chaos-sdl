@@ -1149,7 +1149,8 @@ times the gameport's one-shots on port 201h (up to 5000 loops; JOYDETECT calls i
 STARTUPCHECKLIST prints "Joystick present / not present / active / not active", turns
 `_JoystickOn` off when there's none (which SAVECONFIGFILE then saves), and points `_JoyReader` at
 NULLJOYREADER; otherwise `_MachControl` points it at MYJOYREADER. (SYSJOYREADER, the engine's own,
-with `_Button0-3pressed`, isn't used.)
+with `_Button0-3pressed`, isn't used.) The port adds a game controller's right stick, which holds
+PgUp / PgDn (PROCESSLEVEL's looking without the look key) as the stick holds the arrows.
 
 **MYJOYREADER** (RXUTILSF.C:30) writes into `_Keys` as the keyboard interrupt does: an x reading
 below Xlo holds `_KeyTrans[0]` (left) and lets go of right, above Xhi the reverse, and back inside

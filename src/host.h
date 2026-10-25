@@ -24,8 +24,9 @@ void host_set_palette(const uint8_t *pal);  /* SETPALETTE */
 void host_get_palette(uint8_t *pal);        /* GETPALETTE */
 
 /* A key held for a range of ticks in a headless run: a PC scancode, or the scripted joystick:
- * HOLD_JOY + 0-3 the stick pushed left, right, up, down, + 4-7 buttons 0-3, + 8 Start. */
-enum { HOLD_JOY = 0x100, JOY_BUTTONS = 5 };
+ * HOLD_JOY + 0-3 the stick pushed left, right, up, down, + 4-7 buttons 0-3, + 8 Start, + 9-10
+ * the right stick pushed up, down. */
+enum { HOLD_JOY = 0x100, JOY_BUTTONS = 5, JOY_HOLDS = 4 + JOY_BUTTONS + 2 };
 typedef struct {
     int scancode;
     long from, to;

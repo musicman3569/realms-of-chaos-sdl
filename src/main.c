@@ -17,7 +17,8 @@
  *   --hold A:F-T,... hold an action key (left, right, up, down, jump, attack, item, look) or a PC
  *                    scancode ("0x20:0-10" holds D) from tick F to T; with --joystick also the
  *                    scripted joystick: joyleft, joyright, joyup, joydown, button0-button3
- *                    (a game controller's A, X, B, Y) and start
+ *                    (a game controller's A, X, B, Y), start, and lookup / lookdown (the
+ *                    right stick)
  *   --trace N        print the player's state every N ticks (a multiple of 8)
  *   --female         play the female hero (fireballs); --gems N, --score N start with them
  *   --boss-hits N    start the level's boss with N hits taken (GenericVar[3])
@@ -81,7 +82,8 @@ static const char *const action_names[] = {"left", "right", "up",     "down",
                                            "jump", "attack", "item", "look"};
 /* the scripted joystick's holds (HOLD_JOY + index) */
 static const char *const joy_names[] = {"joyleft", "joyright", "joyup",   "joydown", "button0",
-                                        "button1", "button2",  "button3", "start"};
+                                        "button1", "button2",  "button3", "start",   "lookup",
+                                        "lookdown"};
 
 /* Holds name an action (its key in _KeyTrans) or a raw PC scancode. */
 static bool parse_holds(const char *s, options_t *o)
@@ -97,7 +99,7 @@ static bool parse_holds(const char *s, options_t *o)
         for (int i = 0; i < 8; i++)
             if (!strcmp(name, action_names[i]))
                 code = Sess.key_trans[i] & 0x7F;
-        for (int i = 0; i < 4 + JOY_BUTTONS; i++)
+        for (int i = 0; i < JOY_HOLDS; i++)
             if (!strcmp(name, joy_names[i]))
                 code = HOLD_JOY + i;
         if (code < 0 && name[0] == '0' && name[1] == 'x') {
