@@ -41,14 +41,13 @@ Differences from the original:
 - **The help reader's save** (`ROC.SGT`, written by the original when it opens the help) isn't
   read; the port keeps its own.
 
-Not tried yet: building on Linux and macOS (the code is meant to be portable, and CMake is
-set up for it), and loading a save written by the port in the DOS game.
+Not tried yet: building on macOS, and loading a save written by the port in the DOS game.
 
 ### Getting the game
 
 You need your own copy of the registered game: the port was written against version 1.00
 (`ROC.EXE`, 543,420 bytes) with all three episodes. It only needs `ROC.EXE` and `ROC.DAT`, in
-the same folder; the shareware episode hasn't been tried.
+the same folder (in upper or lower case); the shareware episode hasn't been tried.
 
 ### Build (Windows, MSYS2 mingw64)
 
@@ -60,8 +59,30 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-That produces `build/roc.exe` with `SDL2.dll` copied next to it. SDL2 is the only dependency;
-on Linux and macOS the same commands should work with SDL2 from your package manager.
+That produces `build/roc.exe` with `SDL2.dll` copied next to it. SDL2 is the only dependency.
+
+### Build (Linux)
+
+The same commands, with GCC or Clang, CMake, Ninja and SDL2 from the package manager (on Arch:
+`pacman -S --needed base-devel cmake ninja sdl2-compat`). That produces `build/roc`.
+
+### The Linux AppImage (Steam Deck, Bazzite and other distributions)
+
+```
+packaging/linux/build-appimage.sh
+```
+
+builds `dist/RealmsOfChaos-x86_64.AppImage` in a Docker container (Ubuntu 22.04, with SDL2
+2.32 built from source and bundled), so it runs on any x86-64 Linux with glibc 2.34 or later:
+SteamOS 3, Bazzite, Fedora, Ubuntu 22.04 and later, Arch. Only Docker is needed on the build
+machine. The AppImage holds the port and SDL2 only; the game's files stay outside it.
+
+To play, put the AppImage in a folder with `ROC.EXE` and `ROC.DAT` (or with a `game` folder
+holding them), make it executable (`chmod +x`, or Properties > Permissions in a file manager)
+and run it. On a Steam Deck or Bazzite, add it to Steam in Desktop Mode (Steam > Games > Add a
+Non-Steam Game to My Library > Browse) to play it in Gaming Mode; the Deck's controls are the
+game controller (Controller Support is on by default). The settings, scores and saves are
+written in the game's folder, so it must be writable.
 
 ### Run
 
@@ -69,7 +90,11 @@ on Linux and macOS the same commands should work with SDL2 from your package man
 build/roc.exe game/ROC.EXE
 ```
 
-`ROC.DAT` must be next to `ROC.EXE`. The port reads and writes `ROC.CFG` (the keys and
+`ROC.DAT` must be next to `ROC.EXE`. Without `ROC.EXE` on the command line (as when it's started
+from Steam or a desktop launcher) the port looks for the game next to the AppImage or the
+program, in a `game` folder there, in the current folder, and in its own folder
+(`~/.local/share/realms-of-chaos` on Linux, `%APPDATA%\realms-of-chaos` on Windows); if it
+isn't in any of them, a message lists them. The port reads and writes `ROC.CFG` (the keys and
 settings, as the original's SETUP writes them), `roc.sco` (the Hall of Heroes), the saved games
 and its own `ROCP.CFG` in that folder, or in the folder given with `--data-dir`.
 
@@ -140,7 +165,7 @@ it.
 ### Command line
 
 ```
-roc ROC.EXE [options]
+roc [ROC.EXE] [options]
 ```
 
 | Option | What it does |
@@ -213,6 +238,7 @@ boss), and `docs/implementation-progress.md` the port's history and how each par
 |------|----------|
 | `src/` | The port: C11 + SDL2. The game modules keep the original's names (`rxforest.c` is RXFRSTF.C) |
 | `tools/` | Python helpers and Ghidra scripts |
+| `packaging/linux/` | The AppImage's build (Docker), desktop file and icon |
 | `docs/` | Reverse engineering notes and the port's progress |
 | `game/` | Your game files (not committed) |
 | `analysis/`, `extracted/`, `gfx/` | Generated from the game files by the tools (not committed) |

@@ -41,6 +41,7 @@ add_executable(roc
     src/rxgems.c
     src/rxgrab.c
     src/png.c
+    src/files.c
 )
 
 if(TARGET SDL2::SDL2main)
@@ -67,3 +68,7 @@ if(WIN32)
                 $<TARGET_RUNTIME_DLLS:roc> $<TARGET_FILE_DIR:roc>
         COMMAND_EXPAND_LISTS)
 endif()
+
+# `cmake --install` (the Linux AppImage's AppDir; packaging/linux/build-appimage.sh)
+include(GNUInstallDirs)
+install(TARGETS roc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

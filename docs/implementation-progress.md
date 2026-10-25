@@ -20,6 +20,12 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
 - Build: MSYS2 **mingw64** (gcc, CMake, Ninja, SDL2). With
   `export PATH=/c/msys64/mingw64/bin:$PATH`: `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release`
   then `cmake --build build`. Warning-free with `-Wall -Wextra -Wpedantic`; keep it so.
+- Linux (verified on Arch): the same CMake commands with `cmake`, `ninja` and `sdl2-compat`
+  installed; warning-free with GCC 16 and with the AppImage container's GCC 11.
+  `packaging/linux/build-appimage.sh` builds `dist/RealmsOfChaos-x86_64.AppImage` in Docker
+  (Ubuntu 22.04, SDL2 2.32.10 from source, bundled; the program needs glibc 2.34). It builds the
+  image with `--network host` and runs the build with no network, as appimagetool's runtime is
+  fetched into the image.
 - Python: **no system Python**. Use `C:\Users\Jason\anaconda3\envs\ghidra\python.exe -I`.
 - Ghidra has `game/ROC.EXE` loaded (it isn't packed) with the Turbo Debugger symbols applied:
   original function and variable names, prototypes, structs and source lines. GhidraMCP's
@@ -572,6 +578,21 @@ Enhancements menu) plays it.
   down to 105 over 1000 ticks, tick for tick as PgUp / PgDn and the look key + up do; let go, the
   view comes back; without the controller it does nothing; in the help reader it turns the page as
   PgDn does; the joystick and title runs are unchanged. Not yet tried with a real controller.
+- Port, Linux and the AppImage (the port's; asked for by the user, for the Steam Deck and
+  Bazzite): new `src/files.c`. `file_path` finds the game's files in any case on case-sensitive
+  systems (the game folder has `ROC.SCO` where the original opens `roc.sco`, and a copy may have
+  `roc.dat`), used for ROC.DAT and every file `save.c` reads and writes; `find_game` looks for
+  ROC.EXE and ROC.DAT when the command line names none (as Steam starts a non-Steam game): the
+  AppImage's folder (`$APPIMAGE`) or the program's (SDL_GetBasePath), a `game` folder there, the
+  current folder and SDL_GetPrefPath's `realms-of-chaos`, with a message box listing them if
+  it isn't found. CMake installs `roc` (for the AppDir); `packaging/linux/` has the Docker build,
+  the desktop file and the port's own icon. Verified on Arch: the native build and the AppImage
+  give the documented first-level run's report and a byte-identical screenshot; the AppImage,
+  started with no arguments from `/`, finds a game beside it named `roc.exe` / `roc.dat`; a
+  `--data-dir` run there rewrites `rOc.cfg` and leaves `ROC.SCO` as it was (no new files but
+  ROCP.CFG); without a game it lists the folders; a windowed start on SDL's dummy drivers runs.
+  The AppImage needs libc and libm only, besides its own SDL2. Not yet tried on a real screen
+  under Linux, nor on a Steam Deck or Bazzite.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
@@ -579,6 +600,7 @@ Enhancements menu) plays it.
 
 ## Next steps
 
-1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; a build on Linux and
+1. Load a port-written ROC.SGn in the DOS game (DOSBox) to confirm it; a build on
    macOS; the CRT look on a real screen (`--crt`, Alt+C, in full screen too); the interactive window, the sound effects, the animated tiles and the
-   joystick (with a real controller) haven't been tried by a person yet.
+   joystick (with a real controller) haven't been tried by a person yet; the AppImage on a Steam
+   Deck (Gaming Mode, as a non-Steam game) and on Bazzite.

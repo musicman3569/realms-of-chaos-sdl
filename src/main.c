@@ -1,8 +1,9 @@
 /* Realms of Chaos port.
  *
- * Usage: roc game/ROC.EXE [--level N] [--difficulty N] [--data-dir DIR] [test options]
+ * Usage: roc [game/ROC.EXE] [--level N] [--difficulty N] [--data-dir DIR] [test options]
  *
- * Reads ROC.DAT next to the EXE (and a few tables from the EXE itself) and runs the game: the
+ * Without ROC.EXE it looks for the game in the usual places (files.h: next to the AppImage or
+ * the program, and so on). Reads ROC.DAT next to the EXE (and a few tables from the EXE itself) and runs the game: the
  * title, its menus, and the levels at the game's timer rate. ROC.CFG (the keys and settings),
  * roc.sco (the Hall of Heroes) and saved games are read and written in the game's folder, or in
  * --data-dir. --level N starts a new game at level N (0-26) instead of the title, as the
@@ -41,6 +42,7 @@
 #include "archive.h"
 #include "audio.h"
 #include "engine.h"
+#include "files.h"
 #include "game.h"
 #include "host.h"
 #include "level.h"
@@ -187,7 +189,7 @@ static bool parse_args(int argc, char **argv, options_t *o)
         return false;
     if (o->difficulty < 0 || o->difficulty > 4)
         o->difficulty = 2;
-    return o->exe != NULL;
+    return true;
 }
 
 /* The game's folder: where ROC.EXE is. */
@@ -323,7 +325,7 @@ bool game_no_objects;
 int main(int argc, char **argv)
 {
     if (!parse_args(argc, argv, &opt)) {
-        fprintf(stderr, "usage: roc ROC.EXE [--level N] [--difficulty N] [--data-dir DIR] "
+        fprintf(stderr, "usage: roc [ROC.EXE] [--level N] [--difficulty N] [--data-dir DIR] "
                         "[--screenshot out.png --ticks N] [--pos X,Y] [--player X,Y] "
                         "[--hold ACTION:FROM-TO,...] [--trace N] [--female] [--gems N] "
                         "[--score N] [--boss-hits N] [--invincible] [--collect K] [--sweep] "
@@ -334,11 +336,16 @@ int main(int argc, char **argv)
     game_no_objects = opt.no_objects;
     game_no_fall_check = opt.sweep;
 
-    char err[256], path[1100], folder[1024];
+    char err[256], path[1100], folder[1024], exe[1100];
+    if (!opt.exe) {
+        if (!find_game(exe, sizeof exe))
+            return 1;
+        opt.exe = exe;
+    }
     archive_t arc;
     level_list_t list;
     folder_of(folder, sizeof folder, opt.exe);
-    snprintf(path, sizeof path, "%s/ROC.DAT", folder);
+    file_path(path, sizeof path, folder, "ROC.DAT");
     if (!arc_open(&arc, path, err, sizeof err) ||
         !level_list_load(&list, &arc, opt.exe, err, sizeof err)) {
         fprintf(stderr, "roc: %s\n", err);

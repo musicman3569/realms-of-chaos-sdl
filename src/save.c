@@ -2,6 +2,7 @@
 #include "save.h"
 
 #include "engine.h"
+#include "files.h"
 #include "game.h"
 #include "host.h"
 
@@ -24,9 +25,7 @@ void save_set_dir(const char *d)
 /* APOGEECD: a file in the game's folder. */
 static void path_of(char *out, size_t n, const char *name)
 {
-    const size_t len = strlen(dir);
-    const bool sep = len && dir[len - 1] != '/' && dir[len - 1] != '\\';
-    snprintf(out, n, "%s%s%s", dir, sep ? "/" : "", name);
+    file_path(out, n, dir, name);
 }
 
 static bool read_file(const char *name, void *buf, size_t size)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Realms of Chaos
+Comment=A port of Apogee's 1995 platformer (needs your copy of the game)
+Exec=roc
+Icon=realms-of-chaos
+Terminal=false
+Categories=Game;ActionGame;

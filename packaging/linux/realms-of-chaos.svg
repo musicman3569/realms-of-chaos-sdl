@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- The port's own icon (not the game's art): a sword over a shield. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b2a6b"/>
+      <stop offset="1" stop-color="#140c26"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c8342c"/>
+      <stop offset="1" stop-color="#6e1414"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f4f6fa"/>
+      <stop offset="1" stop-color="#9aa3b5"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="40" fill="url(#sky)"/>
+  <path d="M128 44 L200 68 L200 128 C200 172 168 202 128 218 C88 202 56 172 56 128 L56 68 Z"
+        fill="url(#shield)" stroke="#e8b84a" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M120 30 L136 30 L136 170 L128 186 L120 170 Z" fill="url(#blade)" stroke="#2a2438"
+        stroke-width="3" stroke-linejoin="round"/>
+  <rect x="94" y="168" width="68" height="12" rx="5" fill="#e8b84a" stroke="#2a2438" stroke-width="3"/>
+  <rect x="121" y="180" width="14" height="34" rx="3" fill="#5a3a22" stroke="#2a2438" stroke-width="3"/>
+  <circle cx="128" cy="222" r="9" fill="#e8b84a" stroke="#2a2438" stroke-width="3"/>
+</svg>
