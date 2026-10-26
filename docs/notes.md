@@ -198,6 +198,10 @@ The `IMAGEDATA` names are the `IMAGEstruct` field names without `ID`, lower case
 in all, `ArrowID[3]` to `WolfID[6]`, 1,059 frame pointers. The behaviours index these arrays
 directly, sometimes past their end (DOBIRD's `BirdID[4]` is `BirdpoopID[2]`), so the port keeps
 the same flat table: `tools/gen_imagetab.py` generates `src/imagetab.h` from the debug info.
+The `IMAGEDATA` table itself is `rocimage.txt` in ROC.DAT (LOADOBJ's READITEM 0x47c: 141 records
+of a 9-byte name and a frame count), and one name isn't the field's: `BossSpitID` is `bosspit`
+(the file is `bosspit.spr`). The generator takes the names from it; deriving them from the
+fields (as it first did) left the goblin boss's spit unloaded, invisible and harmless.
 
 INITOBJ allocates the `OBJstruct` (48 bytes) and a `USERstruct` (27 bytes), then picks the
 behaviour by comparing the sprite set pointer with `_Img` slots: it puts an object type index

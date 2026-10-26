@@ -627,6 +627,14 @@ Enhancements menu) plays it.
   it works, stereo music included, at the .port's PerformanceMode=0 (if a level ever stutters,
   Music: Mono halves the emulated AdLib's work, and PerformanceMode=1 sets the CPU governor to
   performance).
+- Fix, the goblin boss's spit (found in play by the user): `src/imagetab.h` named the set
+  `bossspit`, from the field name, but the game's IMAGEDATA table (`rocimage.txt`) and file say
+  `bosspit`, so goblinb's object list never loaded it and the gobs flew with empty frames
+  (invisible, and their empty hit boxes never hurt). `tools/gen_imagetab.py` now takes the names
+  from `extracted/rocimage.txt` (the only one of 141 that differs). Verified headless: on level
+  16 the three gobs show, fly at the player and splash; in the first 5000 ticks the male loses
+  two hit points instead of one; the 30,000-tick `--invincible` run ends as before. Play-tested
+  by the user: the fight works.
 - Ghidra: `FixDisassembly.java` repairs the switch tables Ghidra resolved into the wrong
   segment and the garbage code they caused. It has been applied to the GUI project (ApplyTdInfo,
   FixDisassembly, then both again): 17 switches fixed, 13,137 of 13,138 source lines are code,
