@@ -28,8 +28,9 @@ tables from `ROC.EXE`). The user is learning, so explain findings as you go.
   fetched into the image.
 - Miyoo Mini (Plus) under OnionUI: `packaging/miyoo/build-onion-port.sh` cross-compiles in Docker
   (Ubuntu 22.04 for CMake, shauninman's miyoomini-toolchain v0.0.3: GCC 8.3, glibc 2.28;
-  XK9274's sdl2_miyoo release 178fc0fc, SDL 2.0.20, prebuilt, with the headers of that commit;
-  both downloads pinned by SHA-256) and writes `dist/RealmsOfChaos-OnionUI.zip`. Warning-free with
+  XK9274's sdl2_miyoo release 178fc0fc, SDL 2.0.20, prebuilt, with the headers of that commit,
+  vendored in `packaging/miyoo/sdl2-miyoo/` and checked against its `SHA256SUMS`, as its upstream
+  is gone; the toolchain download is pinned by SHA-256) and writes `dist/RealmsOfChaos-OnionUI.zip`. Warning-free with
   GCC 8.3. To test the ARM binary without the device: an image `FROM roc-miyoo-build` with
   Ubuntu's `qemu-user`, running the packaged `roc` with `QEMU_LD_PREFIX` at the toolchain's
   sysroot and an empty stub `libcam_os_wrapper.so` (the vendor library only the device has) on

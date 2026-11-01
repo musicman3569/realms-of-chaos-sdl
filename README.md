@@ -94,8 +94,9 @@ cross-compiles the port in a Docker container and builds `dist/RealmsOfChaos-Oni
 out as OnionUI's [Ports Collection](https://github.com/OnionUI/Ports-Collection) lays out its
 engine ports. The container has the Miyoo Mini toolchain from shauninman's
 [union-miyoomini-toolchain](https://github.com/shauninman/union-miyoomini-toolchain) (GCC 8.3,
-glibc 2.28) and XK9274's [sdl2_miyoo](https://github.com/XK9274/sdl2_miyoo), an SDL 2.0.20 with
-drivers for the handheld's display, sound and buttons, which goes into the zip. Only Docker is
+glibc 2.28) and XK9274's sdl2_miyoo, an SDL 2.0.20 with drivers for the handheld's display,
+sound and buttons, which goes into the zip; its upstream is gone, so its prebuilt library and
+headers are kept in [`packaging/miyoo/sdl2-miyoo/`](packaging/miyoo/sdl2-miyoo/README.md). Only Docker is
 needed on the build machine. It has been played on a Miyoo Mini Plus, stereo music included.
 
 To install it, extract the zip to the root of the SD card, copy `ROC.EXE` and `ROC.DAT` into
