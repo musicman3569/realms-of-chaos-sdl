@@ -600,7 +600,9 @@ static SDL_Rect view_rect(void)
 
 /* The shadow mask for a picture of w x h pixels, made when that size changes. It's drawn over
  * the picture with the blend 2 * mask * picture, so each texel holds half the factor: a factor
- * over 1 (the bright channel's) can't be stored, its half can. */
+ * over 1 (the bright channel's) can't be stored, its half can. The shader's mask is one pattern
+ * cell per output pixel, too fine to see on a dense screen (a 2560 x 1600 laptop panel), so a
+ * cell covers k x k pixels, k one per 720 lines of the picture: 1 at 1080p, 2 at 1600, 3 at 4K. */
 static bool make_mask(int w, int h)
 {
     if (H.mask_failed)
@@ -622,9 +624,10 @@ static bool make_mask(int w, int h)
     }
     const uint32_t lit = (uint32_t)(CRT_MASK_LIGHT / 2 * 255 + 0.5f);
     const uint32_t dark = (uint32_t)(CRT_MASK_DARK / 2 * 255 + 0.5f);
+    const int k = h / 720 > 1 ? h / 720 : 1;
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++) {
-            const int c = crt_mask_channel(x, y);
+            const int c = crt_mask_channel(x / k, y / k);
             px[y * w + x] = 0xFF000000u | (c == 0 ? lit : dark) << 16 | (c == 1 ? lit : dark) << 8 |
                             (c == 2 ? lit : dark);
         }
